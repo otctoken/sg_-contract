@@ -1,4 +1,4 @@
-module savings_game::sgc {
+module math::sgc {
     public struct Foo has key, store{
     id: UID,
     num:u64,
@@ -76,10 +76,10 @@ fun init(
         };
         if (i_n_lottery < quantity){
             let l_n_lottery_r = i_n_lottery + 1;
-            let mut tree_u:u64 = 1 << tree_h;
+            let mut tree_u:u64 = 1 << (tree_h as u8);
             if(l_n_lottery_r <= tree_u / 2){
                 let h = tree_h - 1;
-                tree_u = 1 << h;
+                tree_u = 1 << (h as u8);
             };
             let l_n_lottery_l = infer_prev_from_tail_single(tree_u,l_n_lottery_r);
             let inum_ = 1;

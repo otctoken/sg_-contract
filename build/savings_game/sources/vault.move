@@ -43,7 +43,7 @@ module savings_game::vault{
     const E_PREV_VAL_OOB: u64 = 4;         // 上一层 v_prev 越界
     const E_ZERO_WEIGHT: u64 = 5;        // 存款不得小于1000000，否者无票权
     const E_TIME_NOT:u64 = 6;            //时间周期未到
-    const E_INSUFFICIENT_PERMISSIONS:u64 = 7;            //时间周期未到
+    const E_INSUFFICIENT_PERMISSIONS:u64 = 7;            //时间周期未
     const E_TYPE_NOT:u64 = 8;            //时间周期未到
     const E_NO_SUCH_BAL:u64 = 9;
     const E_ZERO:u64 = 10;
@@ -497,7 +497,7 @@ module savings_game::vault{
             if(check_whether_the_null_node_is_available(savingsd)){
                 use_null_nodes(savingsd,coin_value,clock,ctx.sender())
             }else{
-            // 新增节点
+            // 新增节点..
                 table::add(&mut savingsd.savings, ctx.sender(), coin_value);  
                 add_new_node(savingsd,coin_value,clock,ctx.sender())
             }
@@ -568,7 +568,7 @@ module savings_game::vault{
             i_n_lottery = i_n;
             let data_ = table::borrow(&savingsd.internal_node_data,i_n); 
             let inum = calculate_node_weight(data_,time_,savingsd.start_time);
-            if(rn >= inum){
+            if(rn > inum){
                 rn = rn - inum;
                 i_n = (i_n + 1) * 2;
                 if(i_n >= savingsd.internal_node){
