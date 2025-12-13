@@ -43,7 +43,7 @@ module savings_game::vault{
     const E_PREV_VAL_OOB: u64 = 4;         // 上一层 v_prev 越界
     const E_ZERO_WEIGHT: u64 = 5;        // 存款不得小于1000000，否者无票权
     const E_TIME_NOT:u64 = 6;            //时间周期未到
-    const E_INSUFFICIENT_PERMISSIONS:u64 = 7;            //时间周期未到
+    const E_INSUFFICIENT_PERMISSIONS:u64 = 7;            //时间周期未
     const E_TYPE_NOT:u64 = 8;            //时间周期未到
     const E_NO_SUCH_BAL:u64 = 9;
     const E_ZERO:u64 = 10;
