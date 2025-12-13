@@ -98,6 +98,7 @@ module savings_game::vault{
         win:u64,
         game_type:u64,
         adder:address,
+        random:u128
     }
 
     public fun get_version(): u64 {
@@ -632,6 +633,7 @@ module savings_game::vault{
             win:lottery_amount,
             game_type:savingsd.time_per_round,
             adder:win_adder,
+            random:random_num
         });
     }
 
@@ -663,6 +665,7 @@ module savings_game::vault{
                     win:emit_fee_t_coin,
                     game_type:savingsd.time_per_round,
                     adder:win_adder,
+                    random:0
                 });
             }else{
                 transfer::public_transfer(reward_coin,win_adder);
@@ -682,6 +685,7 @@ module savings_game::vault{
                         win:emit_fee_d_coin,
                         game_type:savingsd.time_per_round,
                         adder:win_adder,
+                        random:0
                     });
                 }else{
                     transfer::public_transfer(reward_coin,win_adder);
