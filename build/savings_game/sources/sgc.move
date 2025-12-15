@@ -69,8 +69,8 @@ module savings_game::sgc {
         }
     }
 
-    public entry fun burn(c: Coin<SGC>) {
-        transfer::public_transfer(c, @0x0);
+    public entry fun burn(minter: &mut Minter,c: Coin<SGC>) {
+        coin::burn(&mut minter.cap, c);
     }
 
     public entry fun admin_mint(

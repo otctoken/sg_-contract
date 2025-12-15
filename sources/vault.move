@@ -758,21 +758,21 @@ module savings_game::vault{
         *change_get_time = time_;
     }
 
-    entry fun burn_sgc_sui(a_f: &mut AdminAddr_fee,cont: &mut Container,ctx: &mut TxContext){
+    entry fun burn_sgc_sui(minter: &mut Minter,a_f: &mut AdminAddr_fee,cont: &mut Container,ctx: &mut TxContext){
             let coin = withdraw_burning_sgc<SUI>(a_f,ctx);
             let coin_value = coin.value();
             assert!(coin_value > 0, E_ZERO_WEIGHT);
             let coin_sgc = mini_swap::swap<SUI,SGC>(cont,coin,ctx);
-            transfer::public_transfer(coin_sgc, @0x0);
+            sgc::burn(minter,coin_sgc);
     }
 
-    entry fun burn_sgc<T>(a_f: &mut AdminAddr_fee,cont: &mut Container,ctx: &mut TxContext){
+    entry fun burn_sgc<T>(minter: &mut Minter,a_f: &mut AdminAddr_fee,cont: &mut Container,ctx: &mut TxContext){
             let coin = withdraw_burning_sgc<T>(a_f,ctx);
             let coin_value = coin.value();
             assert!(coin_value > 0, E_ZERO_WEIGHT);
             let coin_sui = mini_swap::swap<T,SUI>(cont,coin,ctx);
             let coin_sgc = mini_swap::swap<SUI,SGC>(cont,coin_sui,ctx);
-            transfer::public_transfer(coin_sgc, @0x0);
+            sgc::burn(minter,coin_sgc);
     }
 
 
