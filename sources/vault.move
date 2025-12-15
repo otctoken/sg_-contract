@@ -201,17 +201,17 @@ module savings_game::vault{
             
             // 弹出当前这一条数据的信息
             let amount = vector::pop_back(&mut user_claimable);
-            let asset_type = vector::pop_back(&mut asset_coin_types);
+            let reward_type = vector::pop_back(&mut reward_coin_types);
             let rule_ids = vector::pop_back(&mut all_rule_ids);
             
             // 弹出不需要的数据以保持 vector 同步并清理内存 (drop)
-            let _ = vector::pop_back(&mut reward_coin_types);
+            let _ = vector::pop_back(&mut asset_coin_types);
             let _ = vector::pop_back(&mut user_claimed);
 
             // 5. 执行你的判断逻辑
             if (amount > 0) {
                 let mut result_coin_types = vector::empty<String>();
-                vector::push_back(&mut result_coin_types, asset_type);
+                vector::push_back(&mut result_coin_types, reward_type);
                 
                 // 关于 rule_ids 的处理：
                 // 原报错代码是: result_rule_ids = reward.rule_ids;
