@@ -47,6 +47,11 @@ module savings_game::vault{
     const E_TYPE_NOT:u64 = 8;            //时间周期未到
     const E_NO_SUCH_BAL:u64 = 9;
     const E_ZERO:u64 = 10;
+    const ERRVERSION: u64 = 11;
+    const REWARDFUNDERR:u64 = 12;
+    const REWARDFUNDERROR:u64 = 13;
+    //合约升级必修改
+    const VERSION: u64 = 1;
 
 
     public struct Node_Data has store , drop {
@@ -81,7 +86,8 @@ module savings_game::vault{
         // reward_len:u8,
         // coin_types:Table<u8,vector<String>>, 
         // rule_ids:Table<u8,vector<address>>, 
-        account_cap: AccountCap //结算凭证
+        account_cap: AccountCap, //结算凭证
+        version : u64 //升级后修改
     }
 
     public struct AdminCap has key, store {
@@ -92,6 +98,7 @@ module savings_game::vault{
         id: UID,
         fee:u8,
         adder:address,
+        version : u64 //升级后修改
     }
 
     public struct Outcome<phantom T> has copy,drop {
@@ -100,9 +107,10 @@ module savings_game::vault{
         adder:address,
         random:u128
     }
-
-    public fun get_version(): u64 {
-        version::this_version()
+    //升级后必须调用
+    entry fun upgrading_packages_migrate<T>(_: &AdminCap,s: &mut SavingsData<T>,af:&mut AdminAddr_fee) {
+        s.version = VERSION;
+        af.version = VERSION;
     }
 
     fun init(
@@ -113,6 +121,7 @@ module savings_game::vault{
             id: object::new(ctx),
             fee:12,
             adder:@0x82242fabebc3e6e331c3d5c6de3d34ff965671b75154ec1cb9e00aa437bbfa44,
+            version:1
         };
         transfer::public_share_object(adminAddr);
         transfer::transfer(AdminCap {
@@ -158,6 +167,7 @@ module savings_game::vault{
             // coin_types:table::new(ctx), 
             // rule_ids:table::new(ctx), 
             account_cap: lending::create_account(ctx),
+            version:1
         };
         table::add(&mut sd.adder_node, @0x0, 1);
         table::add(&mut sd.node_adder, 1, @0x0);
@@ -462,6 +472,7 @@ module savings_game::vault{
         clock: &Clock,
         ctx: &mut TxContext
     ) {
+        assert!(savingsd.version == VERSION, ERRVERSION);
         let coin_value = deposit_coin.value();
         assert!(coin_value >= COINDS, E_ZERO_WEIGHT);
         get_sgc_coin(minter,hc,savingsd,g_s,false,clock,ctx);
@@ -520,7 +531,7 @@ module savings_game::vault{
         system_state: &mut SuiSystemState,
         ctx: &mut TxContext
     ){
-        
+        assert!(savingsd.version == VERSION, ERRVERSION);
         let balance_d = table::borrow(&mut savingsd.savings,ctx.sender());
         assert!(*balance_d > 0, E_ZERO_WEIGHT);
         get_sgc_coin(minter,hc,savingsd,g_s,true,clock,ctx);
@@ -608,6 +619,7 @@ module savings_game::vault{
     }
     entry fun lottery<T,D,A>(a_f:&mut AdminAddr_fee,reward_fund_t: &mut RewardFund<T>,reward_fund_d: &mut RewardFund<D>,oracle: &PriceOracle,inc_v2: &mut Incentive,inc_v1: &mut IncentiveV2,storage: &mut Storage,pool_a: &mut Pool<A>,savingsd: &mut SavingsData<A>,r : &Random,clock: &Clock,system_state: &mut SuiSystemState,ctx: &mut TxContext){ //抽奖
         assert!(clock.timestamp_ms() > savingsd.start_time + savingsd.time_per_round, E_TIME_NOT);
+        assert!(savingsd.version == VERSION, ERRVERSION);
         let time_ = clock.timestamp_ms() / TIMEDS;
         let data_i = table::borrow(&savingsd.internal_node_data,1); 
         let rmax = calculate_node_weight(data_i,time_,savingsd.start_time);
@@ -654,42 +666,37 @@ module savings_game::vault{
             let vec_string = *vector::borrow(&tablestring, 0);
             let vec_address = *vector::borrow(&tableaddress, 0);
             let mut reward_coin = claim_reward(savingsd,vec_string,vec_address,inc_v2,storage,reward_fund_t,clock,ctx); 
-            if(reward_coin.value() > 0){
-                let fee_r_amount = reward_coin.value() / (a_f.fee as u64);
-                let fee_r_coin = coin::split(&mut reward_coin,fee_r_amount,ctx);
-                let emit_fee_t_coin = reward_coin.value();
-                transfer::public_transfer(reward_coin,win_adder);
-                deposit_fee(a_f,fee_r_coin,ctx);
+            assert!(reward_coin.value() > 0, REWARDFUNDERR);
+            let fee_r_amount = reward_coin.value() / (a_f.fee as u64);
+            let fee_r_coin = coin::split(&mut reward_coin,fee_r_amount,ctx);
+            let emit_fee_t_coin = reward_coin.value();
+            transfer::public_transfer(reward_coin,win_adder);
+            deposit_fee(a_f,fee_r_coin,ctx);
                 //transfer::public_transfer(fee_r_coin,a_f.adder);
-                emit(Outcome<T>{
-                    win:emit_fee_t_coin,
-                    game_type:savingsd.time_per_round,
-                    adder:win_adder,
-                    random:0
-                });
-            }else{
-                transfer::public_transfer(reward_coin,win_adder);
-            };
+            emit(Outcome<T>{
+                win:emit_fee_t_coin,
+                game_type:savingsd.time_per_round,
+                adder:win_adder,
+                random:0
+            });
+           
             if(count > 1){
                 let vec_string_2 = *vector::borrow(&tablestring, 1);
                 let vec_address_2 = *vector::borrow(&tableaddress, 1);
                 let mut reward_coin = claim_reward(savingsd,vec_string_2,vec_address_2,inc_v2,storage,reward_fund_d,clock,ctx); 
-                if(reward_coin.value() > 0){
-                    let fee_r_amount = reward_coin.value() / (a_f.fee as u64);
-                    let fee_r_coin = coin::split(&mut reward_coin,fee_r_amount,ctx);
-                    let emit_fee_d_coin = reward_coin.value();
-                    transfer::public_transfer(reward_coin,win_adder);
-                    deposit_fee(a_f,fee_r_coin,ctx);
+                assert!(reward_coin.value() > 0, REWARDFUNDERROR);
+                let fee_r_amount = reward_coin.value() / (a_f.fee as u64);
+                let fee_r_coin = coin::split(&mut reward_coin,fee_r_amount,ctx);
+                let emit_fee_d_coin = reward_coin.value();
+                transfer::public_transfer(reward_coin,win_adder);
+                deposit_fee(a_f,fee_r_coin,ctx);
                     //transfer::public_transfer(fee_r_coin,a_f.adder);
-                    emit(Outcome<D>{
-                        win:emit_fee_d_coin,
-                        game_type:savingsd.time_per_round,
-                        adder:win_adder,
-                        random:0
-                    });
-                }else{
-                    transfer::public_transfer(reward_coin,win_adder);
-                };
+                emit(Outcome<D>{
+                    win:emit_fee_d_coin,
+                    game_type:savingsd.time_per_round,
+                    adder:win_adder,
+                    random:0
+                });
             };
         };
     }
@@ -749,6 +756,7 @@ module savings_game::vault{
     }
 
     public entry fun entry_get_sgc_coin<A>(minter:&mut Minter,hc:&mut Halving_cycle,savingsd: &SavingsData<A>,g_s:&mut Get_sgc<A>,clock: &Clock,ctx: &mut TxContext){
+        assert!(savingsd.version == VERSION, ERRVERSION);
         let time_ = clock.timestamp_ms() / TIMEDS;
         let snd_savings = *table::borrow(&savingsd.savings,ctx.sender());
         let get_time = time_ - *table::borrow(&g_s.change_time,ctx.sender());
@@ -759,6 +767,7 @@ module savings_game::vault{
     }
 
     entry fun burn_sgc_sui(minter: &mut Minter,a_f: &mut AdminAddr_fee,cont: &mut Container,ctx: &mut TxContext){
+            assert!(a_f.version == VERSION, ERRVERSION);
             let coin = withdraw_burning_sgc<SUI>(a_f,ctx);
             let coin_value = coin.value();
             assert!(coin_value > 0, E_ZERO_WEIGHT);
@@ -767,6 +776,7 @@ module savings_game::vault{
     }
 
     entry fun burn_sgc<T>(minter: &mut Minter,a_f: &mut AdminAddr_fee,cont: &mut Container,ctx: &mut TxContext){
+            assert!(a_f.version == VERSION, ERRVERSION);
             let coin = withdraw_burning_sgc<T>(a_f,ctx);
             let coin_value = coin.value();
             assert!(coin_value > 0, E_ZERO_WEIGHT);
@@ -780,6 +790,4 @@ module savings_game::vault{
         let deposited_balance = logic::user_collateral_balance(storage,savings.index, savings.account_cap.account_owner());
         pool_a.unnormal_amount(deposited_balance as u64)
     }
-    
-
 }
