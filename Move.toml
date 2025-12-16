@@ -5,7 +5,6 @@ edition = "2024.beta"
 # edition = "2024.alpha" # To use the Move 2024 edition, currently in alpha
 # license = ""           # e.g., "MIT", "GPL", "Apache 2.0"
 # authors = ["..."]      # e.g., ["Joe Smith (joesmith@noemail.com)", "John Snow (johnsnow@noemail.com)"]
-
 [dependencies]
 lending_core = { git = "https://github.com/naviprotocol/navi-smart-contracts.git", subdir = "lending_core", rev = "main" }
 oracle = { git = "https://github.com/naviprotocol/navi-smart-contracts.git", subdir = "oracle", rev = "main" }

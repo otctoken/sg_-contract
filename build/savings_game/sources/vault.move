@@ -211,24 +211,24 @@ module savings_game::vault{
             
             // 弹出当前这一条数据的信息
             let amount = vector::pop_back(&mut user_claimable);
-            let reward_type = vector::pop_back(&mut reward_coin_types);
+            let asset_type = vector::pop_back(&mut asset_coin_types);
             let rule_ids = vector::pop_back(&mut all_rule_ids);
             
             // 弹出不需要的数据以保持 vector 同步并清理内存 (drop)
-            let _ = vector::pop_back(&mut asset_coin_types);
+            let _ = vector::pop_back(&mut reward_coin_types);
             let _ = vector::pop_back(&mut user_claimed);
 
             // 5. 执行你的判断逻辑
             if (amount > 0) {
-                let mut result_coin_types = vector::empty<String>();
-                vector::push_back(&mut result_coin_types, reward_type);
+                let mut asset_coin_type = vector::empty<String>();
+                vector::push_back(&mut asset_coin_type, asset_type);
                 
                 // 关于 rule_ids 的处理：
                 // 原报错代码是: result_rule_ids = reward.rule_ids;
                 // 这里的 rule_ids 是 vector<address> 类型。
                 // 如果你的 result_rule_ids 是用来存所有符合条件的规则ID，你需要决定是覆盖还是合并。
                 // 假设你是想拿到最后一条非零奖励的规则ID，或者你需要根据你的业务逻辑调整这里：
-                vector::push_back(&mut result_strings, result_coin_types);
+                vector::push_back(&mut result_strings, asset_coin_type);
                 vector::push_back(&mut result_addresses, rule_ids);
             };
         };
