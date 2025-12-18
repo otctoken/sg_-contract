@@ -50,6 +50,8 @@ module savings_game::vault{
     const ERRVERSION: u64 = 11;
     const REWARDFUNDERR:u64 = 12;
     const REWARDFUNDERROR:u64 = 13;
+    const WEEKERR:u64 = 14;
+    const MOONERR:u64 = 15;
     //合约升级必修改
     const VERSION: u64 = 1;
 
@@ -631,7 +633,7 @@ module savings_game::vault{
         let data_i = table::borrow(&savingsd.internal_node_data,1); 
         let rmax = calculate_node_weight(data_i,time_,savingsd.start_time);
         let mut rg = random::new_generator(r, ctx);
-        let ra_gas =  random::generate_u64_in_range(&mut rg, 1, 200);
+        let ra_gas =  random::generate_u64_in_range(&mut rg, 1, 20);
         gas_consume(ra_gas);
         let random_num =  random::generate_u128_in_range(&mut rg, 1, rmax);
         let win_r_num = lottery_num(random_num,savingsd,clock);
@@ -783,33 +785,113 @@ module savings_game::vault{
         };
     }
 
-    entry fun lottery_w_and_m<T,D,A>(a_f:&mut AdminAddr_fee,reward_fund_t: &mut RewardFund<T>,reward_fund_d: &mut RewardFund<D>,oracle: &PriceOracle,inc_v2: &mut Incentive,inc_v1: &mut IncentiveV2,storage: &mut Storage,pool_a: &mut Pool<A>,savingsd: &mut SavingsData<A>,r : &Random,clock: &Clock,system_state: &mut SuiSystemState,ctx: &mut TxContext){ //抽奖
-        assert!(clock.timestamp_ms() > savingsd.start_time_day + savingsd.time_per_round, E_TIME_NOT);
+    fun take_all_from_bag<CoinType>(
+        bag: &mut Bag,
+        ctx: &mut TxContext
+    ): Coin<CoinType> {
+        // 1. 同样先生成 String Key
+        let key: String = type_name::into_string(type_name::get<CoinType>());
+        
+        // 2. 用 String 去 Bag 里找
+        if (bag::contains(bag, key)) {
+            // 移除时，Key 的类型也是 String
+            let bal = bag::remove<String, Balance<CoinType>>(bag, key);
+            coin::from_balance(bal, ctx)
+        } else {
+            coin::zero<CoinType>(ctx)
+        }
+    }
+
+    entry fun lottery_weekly<T,D,A>(savingsd: &mut SavingsData<A>,r : &Random,clock: &Clock,ctx: &mut TxContext){ //抽奖
         assert!(savingsd.version == VERSION, ERRVERSION);
+        assert!(savingsd.lottery_draw_weekly, E_TIME_NOT);
         let time_ = clock.timestamp_ms() / TIMEDS;
         let data_i = table::borrow(&savingsd.internal_node_data,1); 
         let rmax = calculate_node_weight(data_i,time_,savingsd.start_time);
         let mut rg = random::new_generator(r, ctx);
-        let ra_gas =  random::generate_u64_in_range(&mut rg, 1, 200);
+        let ra_gas =  random::generate_u64_in_range(&mut rg, 1, 20);
+        gas_consume(ra_gas);
+        let random_num =  random::generate_u128_in_range(&mut rg, 1, rmax);
+        let win_r_num = lottery_num(random_num,savingsd,clock);
+        let win_adder = *table::borrow(&savingsd.node_adder,win_r_num);
+        let count = bag::length(&savingsd.prize_pool_weekly);
+        let coin_vol_A = take_all_from_bag<A>(&mut savingsd.prize_pool_weekly,ctx);
+        if(coin_vol_A.value()>0){
+            transfer::public_transfer(coin_vol_A,win_adder);
+        }else{
+            coin::destroy_zero(coin_vol_A);
+        };
+        if(count > 1){
+            let coin_vol_T = take_all_from_bag<T>(&mut savingsd.prize_pool_weekly,ctx);
+            if(coin_vol_T.value()>0){
+                transfer::public_transfer(coin_vol_T,win_adder);
+            }else{
+                coin::destroy_zero(coin_vol_T);
+            };
+            if(count > 2){
+                let coin_vol_D = take_all_from_bag<D>(&mut savingsd.prize_pool_weekly,ctx);
+                if(coin_vol_D.value()>0){
+                    transfer::public_transfer(coin_vol_D,win_adder);
+                }else{
+                    coin::destroy_zero(coin_vol_D);
+                };
+            }
+        };
+        let count_ = bag::length(&savingsd.prize_pool_weekly);
+        assert!(count_ == 0, WEEKERR);
+
+        //最后
+        savingsd.lottery_draw_weekly = false;
+        emit(Outcome<A>{
+            win:0,
+            game_type:7,
+            adder:win_adder,
+            random:random_num
+        });
+    }
+    entry fun lottery_monthly<T,D,A>(savingsd: &mut SavingsData<A>,r : &Random,clock: &Clock,ctx: &mut TxContext){ //抽奖
+        assert!(savingsd.version == VERSION, ERRVERSION);
+        assert!(savingsd.lottery_draw_monthly, E_TIME_NOT);
+        let time_ = clock.timestamp_ms() / TIMEDS;
+        let data_i = table::borrow(&savingsd.internal_node_data,1); 
+        let rmax = calculate_node_weight(data_i,time_,savingsd.start_time);
+        let mut rg = random::new_generator(r, ctx);
+        let ra_gas =  random::generate_u64_in_range(&mut rg, 1, 20);
         gas_consume(ra_gas);
         let random_num =  random::generate_u128_in_range(&mut rg, 1, rmax);
         let win_r_num = lottery_num(random_num,savingsd,clock);
         let win_adder = *table::borrow(&savingsd.node_adder,win_r_num); 
-        let amount = info(savingsd, pool_a, storage); //这里INDEX重点测试会不会报错...否则将会清零
-        let lottery_amount = amount - savingsd.total_balance;
-        let mut win_coin = withdr_(lottery_amount,savingsd,storage,pool_a,inc_v1,inc_v2,clock,oracle,system_state,ctx);
-        let fee_amount = win_coin.value() / (a_f.fee as u64);
-        let fee_coin = coin::split(&mut win_coin,fee_amount,ctx);
-        transfer::public_transfer(win_coin,win_adder);
-        deposit_fee(a_f,fee_coin,ctx);
-        //transfer::public_transfer(fee_coin,a_f.adder);
-        // 设置一个空对象来匹配奖励类型，可以删除、新建，由管理员或存款超过20%的人
-        claim_reward_all(a_f,reward_fund_t,reward_fund_d,inc_v2,storage,savingsd,clock,win_adder,ctx);
+        let count = bag::length(&savingsd.prize_pool_monthly);
+        let coin_vol_A = take_all_from_bag<A>(&mut savingsd.prize_pool_monthly,ctx);
+        if(coin_vol_A.value()>0){
+            transfer::public_transfer(coin_vol_A,win_adder);
+        }else{
+            coin::destroy_zero(coin_vol_A);
+        };
+        if(count > 1){
+            let coin_vol_T = take_all_from_bag<T>(&mut savingsd.prize_pool_monthly,ctx);
+            if(coin_vol_T.value()>0){
+                transfer::public_transfer(coin_vol_T,win_adder);
+            }else{
+                coin::destroy_zero(coin_vol_T);
+            };
+            if(count > 2){
+                let coin_vol_D = take_all_from_bag<D>(&mut savingsd.prize_pool_monthly,ctx);
+                if(coin_vol_D.value()>0){
+                    transfer::public_transfer(coin_vol_D,win_adder);
+                }else{
+                    coin::destroy_zero(coin_vol_D);
+                };
+            }
+        };
+        let count_ = bag::length(&savingsd.prize_pool_monthly);
+        assert!(count_ == 0, MOONERR);
         //最后
+        savingsd.lottery_draw_monthly = false;
         savingsd.start_time = clock.timestamp_ms();
         emit(Outcome<A>{
-            win:lottery_amount,
-            game_type:1,
+            win:0,
+            game_type:30,
             adder:win_adder,
             random:random_num
         });
