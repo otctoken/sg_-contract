@@ -31,10 +31,9 @@ module savings_game::vault{
     use savings_game::sgc::{Self,SGC,Minter,Halving_cycle};
     use savings_game::mini_swap::{Self};
     
-    const HOUR:u64 = 3_600_000;
+    const MINUTE:u64 = 60_000;
     const COINDS:u64 = 1_000_000;
     const TIMEDS:u64 = 1_000;
-    const DAY:u64 = 86_400_000;
 
     const EFEE:u64 = 0;
     const E_POS_OOB: u64 = 1;              // pos 越界
@@ -151,7 +150,7 @@ module savings_game::vault{
             id: object::new(ctx),
             tree_height:1,
             index: index_,
-            time_per_round: round*HOUR,
+            time_per_round: round*MINUTE,
             start_time:clock.timestamp_ms(),
             total_balance:0,
             internal_node:1,
