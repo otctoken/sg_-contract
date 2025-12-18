@@ -10,6 +10,7 @@ module savings_game::vault{
     use sui::table::{Self, Table};
     use sui::transfer::{Self};
     use sui::random::{Self,Random};
+    use sui::bag::{Self, Bag};
     use sui::dynamic_field as DF;
     use sui::event::emit;
 
@@ -70,8 +71,17 @@ module savings_game::vault{
         id: UID,
         tree_height:u8,//二叉树高
         index: u8, //池子编号
-        time_per_round:u64, //每局周期初定1天
+        time_per_round:u64, //最小周期初定1天
         start_time:u64,  // 本轮开始时间
+        start_time_day:u64,
+        weighting_day:u64, 
+        weighting_weekly:u64, 
+        weighting_monthly:u64, 
+        round_weekly:u64,
+        round_monthly:u64,
+        lottery_draw_weekly:bool,
+        lottery_draw_monthly:bool,
+        number_of_draws:u64,
         total_balance:u64,//总存款
         internal_node:u64,  //内部节点
         leaf_node:u64,  //叶子节点
@@ -82,8 +92,8 @@ module savings_game::vault{
         leaf_node_data:Table<u64,Node_Data>,  
         null_node:vector<u64>,//用start_time时间映射  空节点列表，如果新的时间没有了
         //sgc_weight : u64,
-        // reward_len:u8,
-        // coin_types:Table<u8,vector<String>>, 
+        prize_pool_weekly:Bag,
+        prize_pool_monthly:Bag,
         // rule_ids:Table<u8,vector<address>>, 
         account_cap: AccountCap, //结算凭证
         version : u64 //升级后修改
@@ -136,8 +146,17 @@ module savings_game::vault{
         adminAddr.adder = add;
     }
 
-    public entry fun change_time_per_round<T>(_: &AdminCap,savingsd: &mut SavingsData<T>,num:u64,ctx: &mut TxContext){
-        savingsd.time_per_round = num;
+    public entry fun change_round<T>(_: &AdminCap,savingsd: &mut SavingsData<T>,time_per_num:u64,
+    weekly_num:u64,monthly_num:u64,ctx: &mut TxContext){
+        savingsd.time_per_round = time_per_num;
+        savingsd.round_weekly = weekly_num;
+        savingsd.round_monthly = monthly_num;
+    }
+    public entry fun change_weighting<T>(_: &AdminCap,savingsd: &mut SavingsData<T>,w_d:u64,
+    w_w:u64,w_m:u64,ctx: &mut TxContext){
+        savingsd.weighting_day = w_d;
+        savingsd.weighting_weekly = w_w;
+        savingsd.weighting_monthly = w_m;
     }
     // 看小数点1 SUI 一天  在除以 8 640 000 = 10.000000sgc    六位的 如 deep 191700
     public entry fun initSavingsData<T>(_: &AdminCap,round:u64,index_: u8,sgc_weight:u64,clock: &Clock,ctx: &mut TxContext){
@@ -152,6 +171,15 @@ module savings_game::vault{
             index: index_,
             time_per_round: round*MINUTE,
             start_time:clock.timestamp_ms(),
+            start_time_day:clock.timestamp_ms(),
+            weighting_day:50, 
+            weighting_weekly:30, 
+            weighting_monthly:20, 
+            round_weekly:7,
+            round_monthly:30,
+            lottery_draw_weekly:false,
+            lottery_draw_monthly:false,
+            number_of_draws:0,
             total_balance:0,
             internal_node:1,
             leaf_node:2,
@@ -162,8 +190,8 @@ module savings_game::vault{
             leaf_node_data:table::new(ctx),
             null_node:vector::empty<u64>(),
             //sgc_weight:sgc_weight,
-            // reward_len:0,
-            // coin_types:table::new(ctx), 
+            prize_pool_weekly:bag::new(ctx),
+            prize_pool_monthly:bag::new(ctx),
             // rule_ids:table::new(ctx), 
             account_cap: lending::create_account(ctx),
             version:1
@@ -350,7 +378,7 @@ module savings_game::vault{
 
     //..................................................................................
     fun calculate_node_weight(nodes_data:&Node_Data,time_:u64,start_time:u64):u128{
-        if (start_time > nodes_data.change_time * TIMEDS) {
+        if (start_time >= nodes_data.change_time * TIMEDS) {
             ((time_ - (start_time / TIMEDS)) * nodes_data.balance_right as u128)
         } else {
             ((time_ - nodes_data.change_time) * nodes_data.balance_right as u128) + nodes_data.previous_value
@@ -363,7 +391,7 @@ module savings_game::vault{
         };
     }
     //循环修改父节点....
-    fun modify_parent_node<A>(time_:u64,the_node:u64,savingsd: &mut SavingsData<A>,coinv:u64,add_sub:bool){
+    fun modify_parent_node<A>(time_:u64,the_node:u64,savingsd: &mut SavingsData<A>,coinv:u64,add_sub:bool,p_v:u128){
         let mut node_ = the_node;
         while (node_ > 0) {
             let internal_nodes_data = table::borrow_mut(&mut savingsd.internal_node_data, node_);
@@ -373,24 +401,12 @@ module savings_game::vault{
                 internal_nodes_data.balance_right = internal_nodes_data.balance_right + coinv;
             }else{
                 internal_nodes_data.balance_right = internal_nodes_data.balance_right - coinv;
+                internal_nodes_data.previous_value = internal_nodes_data.previous_value - p_v;
             };
             node_ = node_ / 2;
         };
     }
 
-
-    fun check_whether_the_null_node_is_available<A>(savingsd: &mut SavingsData<A>):(bool){
-        if(savingsd.null_node.length() > 0){
-            let nn = savingsd.null_node[0];
-            if(savingsd.leaf_node_data[nn].change_time  * TIMEDS > savingsd.start_time){
-                false
-            }else{
-                true
-            }
-        }else{
-            false
-        }
-    }
  
 
     fun add_new_node<A>(savingsd: &mut SavingsData<A>,coin_v:u64,clock: &Clock,send:address){//增加空节点怎么弄？
@@ -418,7 +434,7 @@ module savings_game::vault{
         };
         table::add(&mut savingsd.internal_node_data,savingsd.internal_node, id);
         let node_nn = savingsd.internal_node / 2;
-        modify_parent_node(time_,node_nn,savingsd,coinv_,true);
+        modify_parent_node(time_,node_nn,savingsd,coinv_,true,0);
         //执行
         savingsd.leaf_node = savingsd.leaf_node + 1;
         savingsd.internal_node = savingsd.internal_node + 1;
@@ -436,11 +452,11 @@ module savings_game::vault{
         data_.change_time = time_;
         data_.balance_right = data_.balance_right + coinv_;
         let parent_node = get_parent_node(node_n,savingsd.leaf_node,savingsd.tree_height);
-        modify_parent_node<A>(time_,parent_node,savingsd,coinv_,true)
+        modify_parent_node<A>(time_,parent_node,savingsd,coinv_,true,0)
     }
 
     fun use_null_nodes<A>(savingsd: &mut SavingsData<A>,coin_v:u64,clock: &Clock,send:address){   //使用空节点
-        let null_n = savingsd.null_node[0];
+        let null_n = vector::pop_back(&mut savingsd.null_node);
         let adder_ = table::borrow_mut(&mut savingsd.node_adder, null_n);
         let savings_ = table::remove(&mut savingsd.savings, *adder_);
         let node_ = table::remove(&mut savingsd.adder_node, *adder_);
@@ -454,8 +470,7 @@ module savings_game::vault{
         node_d_.previous_value = 0;
 
         let parent_node = get_parent_node(null_n,savingsd.leaf_node,savingsd.tree_height);
-        modify_parent_node<A>(time_,parent_node,savingsd,coinv_,true);
-        savingsd.null_node.remove(0);
+        modify_parent_node<A>(time_,parent_node,savingsd,coinv_,true,0);
     }
 
     public entry fun deposit<A> (
@@ -481,20 +496,12 @@ module savings_game::vault{
             // 存在：获取当前值并加1
             let current_count = table::borrow(&savingsd.savings,ctx.sender()); //下一个 取款必须加入空列表
             if(*current_count == 0){
-                if (savingsd.adder_node.contains(ctx.sender())){
-                    let node_ = table::borrow(&savingsd.adder_node,ctx.sender()); //使用空节点时候查询节点有没有秒均余额，或秒均是否过期
-                    remove_by_value(&mut savingsd.null_node, *node_);
-                    //修改节点数据
-                    modify_node_nodes(*node_,savingsd,coin_value,clock,ctx.sender())
+                    //是否有空节点可用    
+                if(vector::length(&savingsd.null_node) > 0){
+                    use_null_nodes(savingsd,coin_value,clock,ctx.sender())
                 }else{
-                    //是否有空节点可用    切记最后必须 remove_by_value(&mut savingsd.null_node, *node_);
-                    if(check_whether_the_null_node_is_available(savingsd)){
-                        use_null_nodes(savingsd,coin_value,clock,ctx.sender())
-                    }else{
                         //按照新增节点
-                        add_new_node(savingsd,coin_value,clock,ctx.sender())
-                    }
-
+                    add_new_node(savingsd,coin_value,clock,ctx.sender())
                 };
             }else{
                 //修改节点数据
@@ -505,7 +512,7 @@ module savings_game::vault{
             *current_count_ = *current_count_ + coin_value;   //来一个返回左右 与树高，所在层级
         } else {
             //是否有空节点可用  切记最后必须 remove_by_value(&mut savingsd.null_node, *node_);
-            if(check_whether_the_null_node_is_available(savingsd)){
+            if(vector::length(&savingsd.null_node) > 0){
                 use_null_nodes(savingsd,coin_value,clock,ctx.sender())
             }else{
             // 新增节点..
@@ -546,10 +553,10 @@ module savings_game::vault{
         let data_ = table::borrow_mut(&mut savingsd.leaf_node_data,*node_); 
         let p_v = calculate_node_weight(data_,time_,savingsd.start_time);
         data_.balance_right = 0;
-        data_.change_time = time_;
-        data_.previous_value = p_v;
+        data_.change_time = 0;
+        data_.previous_value = 0;
         let parent_node = get_parent_node(*node_,savingsd.leaf_node,savingsd.tree_height);
-        modify_parent_node(time_,parent_node,savingsd,coinv_,false);
+        modify_parent_node(time_,parent_node,savingsd,coinv_,false,p_v);
         let balance_  = table::borrow_mut(&mut savingsd.savings,ctx.sender());
         *balance_ = 0;  
     }
@@ -617,13 +624,14 @@ module savings_game::vault{
         }
     }
     entry fun lottery<T,D,A>(a_f:&mut AdminAddr_fee,reward_fund_t: &mut RewardFund<T>,reward_fund_d: &mut RewardFund<D>,oracle: &PriceOracle,inc_v2: &mut Incentive,inc_v1: &mut IncentiveV2,storage: &mut Storage,pool_a: &mut Pool<A>,savingsd: &mut SavingsData<A>,r : &Random,clock: &Clock,system_state: &mut SuiSystemState,ctx: &mut TxContext){ //抽奖
-        assert!(clock.timestamp_ms() > savingsd.start_time + savingsd.time_per_round, E_TIME_NOT);
+        assert!(clock.timestamp_ms() > savingsd.start_time_day + savingsd.time_per_round, E_TIME_NOT);
         assert!(savingsd.version == VERSION, ERRVERSION);
+        savingsd.number_of_draws = savingsd.number_of_draws + 1;
         let time_ = clock.timestamp_ms() / TIMEDS;
         let data_i = table::borrow(&savingsd.internal_node_data,1); 
         let rmax = calculate_node_weight(data_i,time_,savingsd.start_time);
         let mut rg = random::new_generator(r, ctx);
-        let ra_gas =  random::generate_u64_in_range(&mut rg, 1, 200);
+        let ra_gas =  random::generate_u64_in_range(&mut rg, 1, 20);
         gas_consume(ra_gas);
         let random_num =  random::generate_u128_in_range(&mut rg, 1, rmax);
         let win_r_num = lottery_num(random_num,savingsd,clock);
@@ -631,18 +639,36 @@ module savings_game::vault{
         let amount = info(savingsd, pool_a, storage); //这里INDEX重点测试会不会报错...否则将会清零
         let lottery_amount = amount - savingsd.total_balance;
         let mut win_coin = withdr_(lottery_amount,savingsd,storage,pool_a,inc_v1,inc_v2,clock,oracle,system_state,ctx);
-        let fee_amount = win_coin.value() / (a_f.fee as u64);
+        let win_coin_vol = win_coin.value();
+        let fee_amount = win_coin_vol / (a_f.fee as u64);
+        let win_coin_percent_1 =  (win_coin_vol - fee_amount) / 100;
+        let weekly_prize = win_coin_percent_1 * savingsd.weighting_weekly;
+        let monthly_prize = win_coin_percent_1 * savingsd.weighting_monthly;
         let fee_coin = coin::split(&mut win_coin,fee_amount,ctx);
+        let weekly_coin = coin::split(&mut win_coin,weekly_prize,ctx);
+        let monthly_coin = coin::split(&mut win_coin,monthly_prize,ctx);
         transfer::public_transfer(win_coin,win_adder);
+        add_coin_to_bag(&mut savingsd.prize_pool_weekly,weekly_coin);
+        add_coin_to_bag(&mut savingsd.prize_pool_monthly,monthly_coin);
         deposit_fee(a_f,fee_coin,ctx);
         //transfer::public_transfer(fee_coin,a_f.adder);
         // 设置一个空对象来匹配奖励类型，可以删除、新建，由管理员或存款超过20%的人
         claim_reward_all(a_f,reward_fund_t,reward_fund_d,inc_v2,storage,savingsd,clock,win_adder,ctx);
         //最后
-        savingsd.start_time = clock.timestamp_ms();
+        if(savingsd.number_of_draws % savingsd.round_weekly == 0){
+            if(!savingsd.lottery_draw_weekly){
+                savingsd.lottery_draw_weekly = true;
+            }
+        };
+        if(savingsd.number_of_draws % savingsd.round_monthly == 0){
+            if(!savingsd.lottery_draw_monthly){
+                savingsd.lottery_draw_monthly = true;
+            }
+        };
+        savingsd.start_time_day = clock.timestamp_ms();
         emit(Outcome<A>{
             win:lottery_amount,
-            game_type:savingsd.time_per_round,
+            game_type:1,
             adder:win_adder,
             random:random_num
         });
@@ -666,15 +692,22 @@ module savings_game::vault{
             let vec_address = *vector::borrow(&tableaddress, 0);
             let mut reward_coin = claim_reward(savingsd,vec_string,vec_address,inc_v2,storage,reward_fund_t,clock,ctx); 
             assert!(reward_coin.value() > 0, REWARDFUNDERR);
-            let fee_r_amount = reward_coin.value() / (a_f.fee as u64);
+            let reward_coin_vol = reward_coin.value();
+            let fee_r_amount = reward_coin_vol / (a_f.fee as u64);
+            let reward_coin_percent_1 =  (reward_coin_vol - fee_r_amount) / 100;
+            let weekly_prize = reward_coin_percent_1 * savingsd.weighting_weekly;
+            let monthly_prize = reward_coin_percent_1 * savingsd.weighting_monthly;
+            let weekly_coin = coin::split(&mut reward_coin,weekly_prize,ctx);
+            let monthly_coin = coin::split(&mut reward_coin,monthly_prize,ctx);
             let fee_r_coin = coin::split(&mut reward_coin,fee_r_amount,ctx);
-            let emit_fee_t_coin = reward_coin.value();
             transfer::public_transfer(reward_coin,win_adder);
+            add_coin_to_bag(&mut savingsd.prize_pool_weekly,weekly_coin);
+            add_coin_to_bag(&mut savingsd.prize_pool_monthly,monthly_coin);
             deposit_fee(a_f,fee_r_coin,ctx);
                 //transfer::public_transfer(fee_r_coin,a_f.adder);
             emit(Outcome<T>{
-                win:emit_fee_t_coin,
-                game_type:savingsd.time_per_round,
+                win:reward_coin_vol,
+                game_type:0,
                 adder:win_adder,
                 random:0
             });
@@ -684,15 +717,22 @@ module savings_game::vault{
                 let vec_address_2 = *vector::borrow(&tableaddress, 1);
                 let mut reward_coin = claim_reward(savingsd,vec_string_2,vec_address_2,inc_v2,storage,reward_fund_d,clock,ctx); 
                 assert!(reward_coin.value() > 0, REWARDFUNDERROR);
-                let fee_r_amount = reward_coin.value() / (a_f.fee as u64);
+                let reward_coin_vol = reward_coin.value();
+                let fee_r_amount = reward_coin_vol / (a_f.fee as u64);
+                let reward_coin_percent_1 =  (reward_coin_vol - fee_r_amount) / 100;
+                let weekly_prize = reward_coin_percent_1 * savingsd.weighting_weekly;
+                let monthly_prize = reward_coin_percent_1 * savingsd.weighting_monthly;
+                let weekly_coin = coin::split(&mut reward_coin,weekly_prize,ctx);
+                let monthly_coin = coin::split(&mut reward_coin,monthly_prize,ctx);
                 let fee_r_coin = coin::split(&mut reward_coin,fee_r_amount,ctx);
-                let emit_fee_d_coin = reward_coin.value();
                 transfer::public_transfer(reward_coin,win_adder);
+                add_coin_to_bag(&mut savingsd.prize_pool_weekly,weekly_coin);
+                add_coin_to_bag(&mut savingsd.prize_pool_monthly,monthly_coin);
                 deposit_fee(a_f,fee_r_coin,ctx);
                     //transfer::public_transfer(fee_r_coin,a_f.adder);
                 emit(Outcome<D>{
-                    win:emit_fee_d_coin,
-                    game_type:savingsd.time_per_round,
+                    win:reward_coin_vol,
+                    game_type:0,
                     adder:win_adder,
                     random:0
                 });
@@ -723,6 +763,107 @@ module savings_game::vault{
         );
         // ② 把 Balance 铸造成真正的 Coin 对象并返回
         coin::from_balance(bal, ctx)
+    }
+
+    /// 通用工具：将任意类型的 Coin 存入指定的 Bag 中 (自动累加)
+    fun add_coin_to_bag<CoinType>(
+        bag: &mut Bag, 
+        coin_in: Coin<CoinType>
+    ) {
+        let bal_in = coin::into_balance(coin_in);
+        // 使用 TypeName 作为 Key，保证每种代币唯一
+        let key = key_of<CoinType>();
+
+        // 逻辑与你提供的一模一样：有则累加(join)，无则添加(add)
+        if (bag::contains(bag, key)) {
+            let bal_ref = bag::borrow_mut<String, Balance<CoinType>>(bag, key);
+            balance::join(bal_ref, bal_in);
+        } else {
+            bag::add(bag, key, bal_in);
+        };
+    }
+
+    fun get_w_m_rewards<T,D,A>(savingsdADDER: &SavingsData<A>,storage: &mut Storage, incentive: &Incentive,clock: &Clock, ctx: &mut TxContext){
+        let all_rewards = incentive_v3::get_user_claimable_rewards(clock, storage, inc_v2, savingsd.account_cap.account_owner());
+        let (
+            mut asset_coin_types,   // vector<String>
+            mut reward_coin_types,  // vector<String>
+            mut user_claimable,     // vector<u256>
+            mut user_claimed,       // vector<u256>
+            mut all_rule_ids        // vector<vector<address>>
+        ) = incentive_v3::parse_claimable_rewards(all_rewards);
+        let mut result_strings = vector::empty<vector<String>>();
+        let mut result_addresses = vector::empty<vector<address>>();
+        while (!vector::is_empty(&user_claimable)) {
+            
+            // 弹出当前这一条数据的信息
+            let amount = vector::pop_back(&mut user_claimable);
+            let asset_type = vector::pop_back(&mut asset_coin_types);
+            let rule_ids = vector::pop_back(&mut all_rule_ids);
+            
+            // 弹出不需要的数据以保持 vector 同步并清理内存 (drop)
+            let _ = vector::pop_back(&mut reward_coin_types);
+            let _ = vector::pop_back(&mut user_claimed);
+
+            // 5. 执行你的判断逻辑
+            if (amount > 0) {
+                let mut asset_coin_type = vector::empty<String>();
+                vector::push_back(&mut asset_coin_type, asset_type);
+                
+                // 关于 rule_ids 的处理：
+                // 原报错代码是: result_rule_ids = reward.rule_ids;
+                // 这里的 rule_ids 是 vector<address> 类型。
+                // 如果你的 result_rule_ids 是用来存所有符合条件的规则ID，你需要决定是覆盖还是合并。
+                // 假设你是想拿到最后一条非零奖励的规则ID，或者你需要根据你的业务逻辑调整这里：
+                vector::push_back(&mut result_strings, asset_coin_type);
+                vector::push_back(&mut result_addresses, rule_ids);
+            };
+        }; 
+    }
+
+    entry fun lottery_weekly_and_monthly<T,D,A>(inc_v2: &mut Incentive,storage: &mut Storage,savingsd: &mut SavingsData<A>,r : &Random,clock: &Clock,ctx: &mut TxContext){ //抽奖
+        assert!(savingsd.version == VERSION, ERRVERSION);
+        assert!(savingsd.lottery_draw_weekly || savingsd.lottery_draw_monthly, E_TIME_NOT);
+        if(savingsd.lottery_draw_weekly){
+            let time_ = clock.timestamp_ms() / TIMEDS;
+            let data_i = table::borrow(&savingsd.internal_node_data,1); 
+            let rmax = calculate_node_weight(data_i,time_,savingsd.start_time);
+            let mut rg = random::new_generator(r, ctx);
+            let ra_gas =  random::generate_u64_in_range(&mut rg, 1, 20);
+            gas_consume(ra_gas);
+            let random_num =  random::generate_u128_in_range(&mut rg, 1, rmax);
+            let win_r_num = lottery_num(random_num,savingsd,clock);
+            let win_adder = *table::borrow(&savingsd.node_adder,win_r_num);
+
+            //最后
+            savingsd.lottery_draw_weekly = false;
+            emit(Outcome<A>{
+                win:0,
+                game_type:7,
+                adder:win_adder,
+                random:random_num
+            });
+        }
+        if(savingsd.lottery_draw_monthly){
+            let time_ = clock.timestamp_ms() / TIMEDS;
+            let data_i = table::borrow(&savingsd.internal_node_data,1); 
+            let rmax = calculate_node_weight(data_i,time_,savingsd.start_time);
+            let mut rg = random::new_generator(r, ctx);
+            let ra_gas =  random::generate_u64_in_range(&mut rg, 1, 20);
+            gas_consume(ra_gas);
+            let random_num =  random::generate_u128_in_range(&mut rg, 1, rmax);
+            let win_r_num = lottery_num(random_num,savingsd,clock);
+            let win_adder = *table::borrow(&savingsd.node_adder,win_r_num); 
+            //最后
+            savingsd.lottery_draw_monthly = false;
+            savingsd.start_time = clock.timestamp_ms();
+            emit(Outcome<A>{
+                win:0,
+                game_type:30,
+                adder:win_adder,
+                random:random_num
+            });
+        }
     }
 
     //必须放在取款前-----在添加一个node 余额变动就会修改 清零后删除 Get_sgc只能在添加node？余额  两样 存入 时间 可以代替取币时间 存入时间 通用  余额除去1000 000  时间按秒
