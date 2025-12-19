@@ -1,14 +1,11 @@
 module savings_game::vault{
-
-    use std::type_name::{Self, TypeName};
     use std::ascii::{String};
-
     use sui::sui::SUI;
     use sui::coin::{Self, Coin};
+    use std::type_name::{Self};
     use sui::balance::{Self, Balance};
     use sui::clock::{Clock};
     use sui::table::{Self, Table};
-    use sui::transfer::{Self};
     use sui::random::{Self,Random};
     use sui::bag::{Self, Bag};
     use sui::dynamic_field as DF;
@@ -17,10 +14,9 @@ module savings_game::vault{
     use lending_core::account::{AccountCap};
     use lending_core::lending;
     use lending_core::incentive_v2::{Incentive as IncentiveV2};
-    use lending_core::incentive_v3::{Self, Incentive, RewardFund,ClaimableReward};
+    use lending_core::incentive_v3::{Self, Incentive, RewardFund};
     use lending_core::pool::{Pool};
     use lending_core::storage::{Storage};
-    use lending_core::version;
     use lending_core::logic;
 
     use oracle::oracle::{PriceOracle};
@@ -43,15 +39,13 @@ module savings_game::vault{
     const E_PREV_VAL_OOB: u64 = 4;         // 上一层 v_prev 越界
     const E_ZERO_WEIGHT: u64 = 5;        // 存款不得小于1000000，否者无票权
     const E_TIME_NOT:u64 = 6;            //时间周期未到
-    const E_INSUFFICIENT_PERMISSIONS:u64 = 7;            //时间周期未
-    const E_TYPE_NOT:u64 = 8;            //时间周期未到
-    const E_NO_SUCH_BAL:u64 = 9;
-    const E_ZERO:u64 = 10;
-    const ERRVERSION: u64 = 11;
-    const REWARDFUNDERR:u64 = 12;
-    const REWARDFUNDERROR:u64 = 13;
-    const WEEKERR:u64 = 14;
-    const MOONERR:u64 = 15;
+    const E_NO_SUCH_BAL:u64 = 7;
+    const E_ZERO:u64 = 8;
+    const ERRVERSION: u64 = 9;
+    const REWARDFUNDERR:u64 = 10;
+    const REWARDFUNDERROR:u64 = 11;
+    const WEEKERR:u64 = 12;
+    const MOONERR:u64 = 13;
     //合约升级必修改
     const VERSION: u64 = 1;
 
@@ -105,10 +99,9 @@ module savings_game::vault{
         id: UID
     }
 
-    public struct AdminAddr_fee has key, store {
+    public struct Burn_sgc_fee has key, store {
         id: UID,
         fee:u8,
-        adder:address,
         version : u64 //升级后修改
     }
 
@@ -119,7 +112,7 @@ module savings_game::vault{
         random:u128
     }
     //升级后必须调用
-    entry fun upgrading_packages_migrate<T>(_: &AdminCap,s: &mut SavingsData<T>,af:&mut AdminAddr_fee) {
+    entry fun upgrading_packages_migrate<T>(_: &AdminCap,s: &mut SavingsData<T>,af:&mut Burn_sgc_fee) {
         s.version = VERSION;
         af.version = VERSION;
     }
@@ -128,34 +121,30 @@ module savings_game::vault{
         ctx: &mut TxContext
     ) {
 
-        let adminAddr = AdminAddr_fee {
+        let b_fee = Burn_sgc_fee {
             id: object::new(ctx),
-            fee:12,
-            adder:@0x82242fabebc3e6e331c3d5c6de3d34ff965671b75154ec1cb9e00aa437bbfa44,
+            fee:20,
             version:1
         };
-        transfer::public_share_object(adminAddr);
+        transfer::public_share_object(b_fee);
         transfer::transfer(AdminCap {
             id: object::new(ctx)
-        }, @0x82242fabebc3e6e331c3d5c6de3d34ff965671b75154ec1cb9e00aa437bbfa44);
+        }, ctx.sender());
     }
 
-    public entry fun change_fee(_: &AdminCap,adminAddr:&mut AdminAddr_fee,fee:u8,ctx: &mut TxContext){
+    public entry fun change_fee(_: &AdminCap,adminAddr:&mut Burn_sgc_fee,fee:u8){
         assert!(fee >= 10,EFEE);
         adminAddr.fee = fee;
     }
-    public entry fun change_adder(_: &AdminCap,adminAddr:&mut AdminAddr_fee,add:address,ctx: &mut TxContext){
-        adminAddr.adder = add;
-    }
 
     public entry fun change_round<T>(_: &AdminCap,savingsd: &mut SavingsData<T>,time_per_num:u64,
-    weekly_num:u64,monthly_num:u64,ctx: &mut TxContext){
+    weekly_num:u64,monthly_num:u64){
         savingsd.time_per_round = time_per_num;
         savingsd.round_weekly = weekly_num;
         savingsd.round_monthly = monthly_num;
     }
     public entry fun change_weighting<T>(_: &AdminCap,savingsd: &mut SavingsData<T>,w_d:u64,
-    w_w:u64,w_m:u64,ctx: &mut TxContext){
+    w_w:u64,w_m:u64){
         savingsd.weighting_day = w_d;
         savingsd.weighting_weekly = w_w;
         savingsd.weighting_monthly = w_m;
@@ -212,7 +201,7 @@ module savings_game::vault{
 
 
     //需要有存款后执行这个函数
-    public  fun get_rewards_type<T>(savingsd: &SavingsData<T>,storage: &mut Storage, incentive: &Incentive,clock: &Clock, ctx: &mut TxContext)
+    public  fun get_rewards_type<T>(savingsd: &SavingsData<T>,storage: &mut Storage, incentive: &Incentive,clock: &Clock)
     : (vector<vector<String>>, vector<vector<address>>){
         // 1. 获取原始奖励列表
         let all_rewards = incentive_v3::get_user_claimable_rewards(clock, storage, incentive, savingsd.account_cap.account_owner());
@@ -315,7 +304,7 @@ module savings_game::vault{
         };
         loop {                                 // Move 同样支持 `loop`
             if (nn > tree_u / 2) {
-                return nn - 1;                 // 直接返回找到的父
+               return nn - 1;                 // 直接返回找到的父
             };
             let right = tail_from_prev_single(tree_u, nn);
             if (right < leaf_node) {
@@ -325,17 +314,15 @@ module savings_game::vault{
         }
     }
 
-    //let u:u64 = 1 << n;
-    //数学@......................................……………………..............................................
 
         /// 统一生成“键”：ascii::String（和 type_name 完全一致）
     fun key_of<A>(): String {
-        type_name::into_string(type_name::get<A>())
+        type_name::into_string(type_name::get_with_original_ids<A>())
     }
     //金库存取
     /// 存入任意币种手续费：把 Coin<A> 合并进 Bag 里的 `Balance<A>`
     public entry fun deposit_fee<A>(
-        vault: &mut AdminAddr_fee,
+        vault: &mut Burn_sgc_fee,
         coin_in: Coin<A>,
         _ctx: &mut TxContext,
     ) {
@@ -349,11 +336,9 @@ module savings_game::vault{
             DF::add<String, Balance<A>>(&mut vault.id, k0, bal_in);
         }
     }
-
-
 /// 必须有余额才取：没有则用自定义错误码中止（不再触发 DF 的 EFieldDoesNotExist=1）
     fun withdraw_burning_sgc<A>(
-        vault: &mut AdminAddr_fee,
+        vault: &mut Burn_sgc_fee,
         ctx: &mut TxContext,
     ): Coin<A> {
         let k0: String = key_of<A>();
@@ -372,12 +357,6 @@ module savings_game::vault{
         } else {
             ((time_ - nodes_data.change_time) * nodes_data.balance_right as u128) + nodes_data.previous_value
         }
-    }
-    fun remove_by_value(nums: &mut vector<u64>, target: u64){
-        let (found, i) = vector::index_of(nums, &target);
-        if (found) {
-            vector::swap_remove(nums, i);
-        };
     }
     //循环修改父节点....
     fun modify_parent_node<A>(time_:u64,the_node:u64,savingsd: &mut SavingsData<A>,coinv:u64,add_sub:bool,p_v:u128){
@@ -430,7 +409,7 @@ module savings_game::vault{
         } 
     }
     
-    fun modify_node_nodes<A>(node_n:u64,savingsd: &mut SavingsData<A>,coin_v:u64,clock: &Clock,send:address){   //修改我的节点 增加存款或再次加入
+    fun modify_node_nodes<A>(node_n:u64,savingsd: &mut SavingsData<A>,coin_v:u64,clock: &Clock,_send:address){   //修改我的节点 增加存款或再次加入
         let coinv_ = coin_v / COINDS;
         let time_ = clock.timestamp_ms() / TIMEDS;
         let data_ = table::borrow_mut(&mut savingsd.leaf_node_data,node_n); 
@@ -525,7 +504,7 @@ module savings_game::vault{
         ctx: &mut TxContext
     ){
         assert!(savingsd.version == VERSION, ERRVERSION);
-        let balance_d = table::borrow(&mut savingsd.savings,ctx.sender());
+        let balance_d = table::borrow(&savingsd.savings,ctx.sender());
         assert!(*balance_d > 0, E_ZERO_WEIGHT);
         get_sgc_coin(minter,hc,savingsd,g_s,true,clock,ctx);//必须放在savingsd.savings变化前
         let coinv_ = *balance_d / COINDS;
@@ -550,7 +529,7 @@ module savings_game::vault{
 
     fun withdr_<A> (
         sui_withdraw_amount: u64,
-        savingsd: &mut SavingsData<A>,
+        savingsd: &SavingsData<A>,
         storage: &mut Storage,
         pool_a: &mut Pool<A>,
         inc_v1: &mut IncentiveV2,
@@ -610,7 +589,7 @@ module savings_game::vault{
             i = i + 1;
         }
     }
-    entry fun lottery<T,D,A>(a_f:&mut AdminAddr_fee,reward_fund_t: &mut RewardFund<T>,reward_fund_d: &mut RewardFund<D>,oracle: &PriceOracle,inc_v2: &mut Incentive,inc_v1: &mut IncentiveV2,storage: &mut Storage,pool_a: &mut Pool<A>,savingsd: &mut SavingsData<A>,r : &Random,clock: &Clock,system_state: &mut SuiSystemState,ctx: &mut TxContext){ //抽奖
+    entry fun lottery<T,D,A>(a_f:&mut Burn_sgc_fee,reward_fund_t: &mut RewardFund<T>,reward_fund_d: &mut RewardFund<D>,oracle: &PriceOracle,inc_v2: &mut Incentive,inc_v1: &mut IncentiveV2,storage: &mut Storage,pool_a: &mut Pool<A>,savingsd: &mut SavingsData<A>,r : &Random,clock: &Clock,system_state: &mut SuiSystemState,ctx: &mut TxContext){ //抽奖
         assert!(clock.timestamp_ms() > savingsd.start_time_day + savingsd.time_per_round, E_TIME_NOT);
         assert!(savingsd.version == VERSION, ERRVERSION);
         savingsd.number_of_draws = savingsd.number_of_draws + 1;
@@ -662,7 +641,7 @@ module savings_game::vault{
     }
 
     fun claim_reward_all<T,D,A>(
-        a_f:&mut AdminAddr_fee,
+        a_f:&mut Burn_sgc_fee,
         reward_fund_t: &mut RewardFund<T>,
         reward_fund_d: &mut RewardFund<D>,
         inc_v2: &mut Incentive,
@@ -672,7 +651,7 @@ module savings_game::vault{
         win_adder:address,
         ctx: &mut TxContext
     ){
-        let (tablestring, tableaddress) = get_rewards_type(savingsd, storage, inc_v2, clock, ctx);
+        let (tablestring, tableaddress) = get_rewards_type(savingsd, storage, inc_v2, clock);
         let count = vector::length(&tablestring);
         if(count > 0){
             let vec_string = *vector::borrow(&tablestring, 0);
@@ -729,7 +708,7 @@ module savings_game::vault{
 
 
     fun claim_reward<RewardCoinType,A>(
-        savingsd: &mut SavingsData<A>,
+        savingsd: &SavingsData<A>,
         coin_types: vector<String>,
         rule_ids: vector<address>,
         incentive: &mut Incentive,
@@ -922,7 +901,7 @@ module savings_game::vault{
         *change_get_time = time_;
     }
 
-    entry fun burn_sgc_sui(minter: &mut Minter,a_f: &mut AdminAddr_fee,cont: &mut Container,ctx: &mut TxContext){
+    entry fun burn_sgc_sui(minter: &mut Minter,a_f: &mut Burn_sgc_fee,cont: &mut Container,ctx: &mut TxContext){
             assert!(a_f.version == VERSION, ERRVERSION);
             let coin = withdraw_burning_sgc<SUI>(a_f,ctx);
             let coin_value = coin.value();
@@ -931,7 +910,7 @@ module savings_game::vault{
             sgc::burn(minter,coin_sgc);
     }
 
-    entry fun burn_sgc<T>(minter: &mut Minter,a_f: &mut AdminAddr_fee,cont: &mut Container,ctx: &mut TxContext){
+    entry fun burn_sgc<T>(minter: &mut Minter,a_f: &mut Burn_sgc_fee,cont: &mut Container,ctx: &mut TxContext){
             assert!(a_f.version == VERSION, ERRVERSION);
             let coin = withdraw_burning_sgc<T>(a_f,ctx);
             let coin_value = coin.value();

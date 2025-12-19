@@ -1,8 +1,5 @@
 module savings_game::sgc {
-    use std::option;
     use sui::coin::{Self, Coin, TreasuryCap};
-    use sui::transfer;
-    use sui::tx_context::{Self, TxContext};
     use sui::url::{Self};
 
     const TOTAL_SUPPLY_RAW: u64 = 100_000_000_000_000_000;
@@ -27,6 +24,7 @@ module savings_game::sgc {
     public struct Minter has key, store {
         id: UID,
         cap: TreasuryCap<SGC>,
+        total_burned: u64,
     }
 
     fun init(witness: SGC, ctx: &mut TxContext) {
@@ -52,16 +50,16 @@ module savings_game::sgc {
         transfer::public_freeze_object(metadata);
         // transfer::public_share_object(metadata);
                 // 封装 TreasuryCap 到 Minter并共享 Minter
-        let minter = Minter { id: object::new(ctx), cap: treasury };
+        let minter = Minter { id: object::new(ctx), cap: treasury,total_burned:0 };
         transfer::share_object(minter);
         transfer::public_share_object(hc);
-        transfer::transfer(at, @0x82242fabebc3e6e331c3d5c6de3d34ff965671b75154ec1cb9e00aa437bbfa44);
+        transfer::transfer(at, ctx.sender());
     }
 
     public(package) fun mint(
         minter: &mut Minter,hc:&mut Halving_cycle, amount: u64,  ctx: &mut TxContext
     ) {
-        let ts: u64 = coin::total_supply<SGC>(&mut minter.cap);
+        let ts: u64 = coin::total_supply<SGC>(&minter.cap) + minter.total_burned;
         halved(ts,hc);
         let amount_to = amount / hc.halved;
         if(ts < TOTAL_SUPPLY_RAW && amount_to > 0){
@@ -70,7 +68,9 @@ module savings_game::sgc {
     }
 
     public entry fun burn(minter: &mut Minter,c: Coin<SGC>) {
+        let value = c.value();
         coin::burn(&mut minter.cap, c);
+        minter.total_burned = minter.total_burned + value;
     }
 
     public entry fun admin_mint(

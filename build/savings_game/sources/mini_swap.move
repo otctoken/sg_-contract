@@ -1,8 +1,6 @@
 module savings_game::mini_swap{
     use sui::coin::Coin;
-    use sui::tx_context::{Self, TxContext};
-    use sui::transfer;
-    use flowxswap::factory::{Self, Container};
+    use flowxswap::factory::{Container};
     use flowxswap::router;
 
     entry fun entry_swap<X, Y>(
