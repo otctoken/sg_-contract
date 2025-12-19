@@ -946,4 +946,5 @@ module savings_game::vault{
         let deposited_balance = logic::user_collateral_balance(storage,savings.index, savings.account_cap.account_owner());
         pool_a.unnormal_amount(deposited_balance as u64)
     }
+
 }
