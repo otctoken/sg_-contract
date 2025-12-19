@@ -606,21 +606,21 @@ module savings_game::vault{
         let win_adder = *table::borrow(&savingsd.node_adder,win_r_num); 
         let amount = info(savingsd, pool_a, storage); //这里INDEX重点测试会不会报错...否则将会清零
         let lottery_amount = amount - savingsd.total_balance;
-        let mut win_coin = withdr_(lottery_amount,savingsd,storage,pool_a,inc_v1,inc_v2,clock,oracle,system_state,ctx);
-        let win_coin_vol = win_coin.value();
-        let fee_amount = win_coin_vol / (a_f.fee as u64);
-        let win_coin_percent_1 =  (win_coin_vol - fee_amount) / 100;
-        let weekly_prize = win_coin_percent_1 * savingsd.weighting_weekly;
-        let monthly_prize = win_coin_percent_1 * savingsd.weighting_monthly;
-        let fee_coin = coin::split(&mut win_coin,fee_amount,ctx);
-        let weekly_coin = coin::split(&mut win_coin,weekly_prize,ctx);
-        let monthly_coin = coin::split(&mut win_coin,monthly_prize,ctx);
-        transfer::public_transfer(win_coin,win_adder);
-        add_coin_to_bag(&mut savingsd.prize_pool_weekly,weekly_coin);
-        add_coin_to_bag(&mut savingsd.prize_pool_monthly,monthly_coin);
-        deposit_fee(a_f,fee_coin,ctx);
-        //transfer::public_transfer(fee_coin,a_f.adder);
-        // 设置一个空对象来匹配奖励类型，可以删除、新建，由管理员或存款超过20%的人
+        if(lottery_amount > 0){
+            let mut win_coin = withdr_(lottery_amount,savingsd,storage,pool_a,inc_v1,inc_v2,clock,oracle,system_state,ctx);
+            let win_coin_vol = win_coin.value();
+            let fee_amount = win_coin_vol / (a_f.fee as u64);
+            let win_coin_percent_1 =  (win_coin_vol - fee_amount) / 100;
+            let weekly_prize = win_coin_percent_1 * savingsd.weighting_weekly;
+            let monthly_prize = win_coin_percent_1 * savingsd.weighting_monthly;
+            let fee_coin = coin::split(&mut win_coin,fee_amount,ctx);
+            let weekly_coin = coin::split(&mut win_coin,weekly_prize,ctx);
+            let monthly_coin = coin::split(&mut win_coin,monthly_prize,ctx);
+            transfer::public_transfer(win_coin,win_adder);
+            add_coin_to_bag(&mut savingsd.prize_pool_weekly,weekly_coin);
+            add_coin_to_bag(&mut savingsd.prize_pool_monthly,monthly_coin);
+            deposit_fee(a_f,fee_coin,ctx);
+        };
         claim_reward_all(a_f,reward_fund_t,reward_fund_d,inc_v2,storage,savingsd,clock,win_adder,ctx);
         //最后
         if(savingsd.number_of_draws % savingsd.round_weekly == 0){
