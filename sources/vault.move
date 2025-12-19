@@ -178,7 +178,7 @@ module savings_game::vault{
             weighting_weekly:30, 
             weighting_monthly:20, 
             round_weekly:7,
-            round_monthly:28,
+            round_monthly:14,
             lottery_draw_weekly:false,
             lottery_draw_monthly:false,
             number_of_draws:0,
@@ -961,4 +961,5 @@ module savings_game::vault{
         let deposited_balance = logic::user_collateral_balance(storage,savings.index, savings.account_cap.account_owner());
         pool_a.unnormal_amount(deposited_balance as u64)
     }
+
 }
