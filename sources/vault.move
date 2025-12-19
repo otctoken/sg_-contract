@@ -102,6 +102,7 @@ module savings_game::vault{
     public struct Burn_sgc_fee has key, store {
         id: UID,
         fee:u8,
+        start_draw_reward:u64,
         version : u64 //升级后修改
     }
 
@@ -124,6 +125,7 @@ module savings_game::vault{
         let b_fee = Burn_sgc_fee {
             id: object::new(ctx),
             fee:20,
+            start_draw_reward:10000000000,
             version:1
         };
         transfer::public_share_object(b_fee);
@@ -132,9 +134,12 @@ module savings_game::vault{
         }, ctx.sender());
     }
 
-    public entry fun change_fee(_: &AdminCap,adminAddr:&mut Burn_sgc_fee,fee:u8){
+    public entry fun change_fee(_: &AdminCap,bf:&mut Burn_sgc_fee,fee:u8){
         assert!(fee >= 10,EFEE);
-        adminAddr.fee = fee;
+        bf.fee = fee;
+    }
+    public entry fun change_start_draw_reward(_: &AdminCap,bf:&mut Burn_sgc_fee,r:u64){
+        bf.start_draw_reward = r;
     }
 
     public entry fun change_round<T>(_: &AdminCap,savingsd: &mut SavingsData<T>,time_per_num:u64,
@@ -591,7 +596,7 @@ module savings_game::vault{
             i = i + 1;
         }
     }
-    entry fun lottery<T,D,A>(a_f:&mut Burn_sgc_fee,reward_fund_t: &mut RewardFund<T>,reward_fund_d: &mut RewardFund<D>,oracle: &PriceOracle,inc_v2: &mut Incentive,inc_v1: &mut IncentiveV2,storage: &mut Storage,pool_a: &mut Pool<A>,savingsd: &mut SavingsData<A>,r : &Random,clock: &Clock,system_state: &mut SuiSystemState,ctx: &mut TxContext){ //抽奖
+    entry fun lottery<T,D,A>(minter:&mut Minter,hc:&mut Halving_cycle,b_f:&mut Burn_sgc_fee,reward_fund_t: &mut RewardFund<T>,reward_fund_d: &mut RewardFund<D>,oracle: &PriceOracle,inc_v2: &mut Incentive,inc_v1: &mut IncentiveV2,storage: &mut Storage,pool_a: &mut Pool<A>,savingsd: &mut SavingsData<A>,r : &Random,clock: &Clock,system_state: &mut SuiSystemState,ctx: &mut TxContext){ //抽奖
         assert!(clock.timestamp_ms() > savingsd.start_time_day + savingsd.time_per_round, E_TIME_NOT);
         assert!(savingsd.version == VERSION, ERRVERSION);
         savingsd.number_of_draws = savingsd.number_of_draws + 1;
@@ -609,7 +614,7 @@ module savings_game::vault{
         if(lottery_amount > 0){
             let mut win_coin = withdr_(lottery_amount,savingsd,storage,pool_a,inc_v1,inc_v2,clock,oracle,system_state,ctx);
             let win_coin_vol = win_coin.value();
-            let fee_amount = win_coin_vol / (a_f.fee as u64);
+            let fee_amount = win_coin_vol / (b_f.fee as u64);
             let win_coin_percent_1 =  (win_coin_vol - fee_amount) / 100;
             let weekly_prize = win_coin_percent_1 * savingsd.weighting_weekly;
             let monthly_prize = win_coin_percent_1 * savingsd.weighting_monthly;
@@ -619,9 +624,9 @@ module savings_game::vault{
             transfer::public_transfer(win_coin,win_adder);
             add_coin_to_bag(&mut savingsd.prize_pool_weekly,weekly_coin);
             add_coin_to_bag(&mut savingsd.prize_pool_monthly,monthly_coin);
-            deposit_fee(a_f,fee_coin,ctx);
+            deposit_fee(b_f,fee_coin,ctx);
         };
-        claim_reward_all(a_f,reward_fund_t,reward_fund_d,inc_v2,storage,savingsd,clock,win_adder,ctx);
+        claim_reward_all(b_f,reward_fund_t,reward_fund_d,inc_v2,storage,savingsd,clock,win_adder,ctx);
         //最后
         if(savingsd.number_of_draws % savingsd.round_weekly == 0){
             if(!savingsd.lottery_draw_weekly){
@@ -634,6 +639,7 @@ module savings_game::vault{
             }
         };
         savingsd.start_time_day = clock.timestamp_ms();
+        sgc::mint(minter,hc,b_f.start_draw_reward,ctx);
         emit(Outcome<A>{
             win:lottery_amount,
             game_type:1,
@@ -643,7 +649,7 @@ module savings_game::vault{
     }
 
     fun claim_reward_all<T,D,A>(
-        a_f:&mut Burn_sgc_fee,
+        b_f:&mut Burn_sgc_fee,
         reward_fund_t: &mut RewardFund<T>,
         reward_fund_d: &mut RewardFund<D>,
         inc_v2: &mut Incentive,
@@ -661,7 +667,7 @@ module savings_game::vault{
             let mut reward_coin = claim_reward(savingsd,vec_string,vec_address,inc_v2,storage,reward_fund_t,clock,ctx); 
             assert!(reward_coin.value() > 0, REWARDFUNDERR);
             let reward_coin_vol = reward_coin.value();
-            let fee_r_amount = reward_coin_vol / (a_f.fee as u64);
+            let fee_r_amount = reward_coin_vol / (b_f.fee as u64);
             let reward_coin_percent_1 =  (reward_coin_vol - fee_r_amount) / 100;
             let weekly_prize = reward_coin_percent_1 * savingsd.weighting_weekly;
             let monthly_prize = reward_coin_percent_1 * savingsd.weighting_monthly;
@@ -671,8 +677,8 @@ module savings_game::vault{
             transfer::public_transfer(reward_coin,win_adder);
             add_coin_to_bag(&mut savingsd.prize_pool_weekly,weekly_coin);
             add_coin_to_bag(&mut savingsd.prize_pool_monthly,monthly_coin);
-            deposit_fee(a_f,fee_r_coin,ctx);
-                //transfer::public_transfer(fee_r_coin,a_f.adder);
+            deposit_fee(b_f,fee_r_coin,ctx);
+                //transfer::public_transfer(fee_r_coin,b_f.adder);
             emit(Outcome<T>{
                 win:reward_coin_vol,
                 game_type:0,
@@ -686,7 +692,7 @@ module savings_game::vault{
                 let mut reward_coin = claim_reward(savingsd,vec_string_2,vec_address_2,inc_v2,storage,reward_fund_d,clock,ctx); 
                 assert!(reward_coin.value() > 0, REWARDFUNDERROR);
                 let reward_coin_vol = reward_coin.value();
-                let fee_r_amount = reward_coin_vol / (a_f.fee as u64);
+                let fee_r_amount = reward_coin_vol / (b_f.fee as u64);
                 let reward_coin_percent_1 =  (reward_coin_vol - fee_r_amount) / 100;
                 let weekly_prize = reward_coin_percent_1 * savingsd.weighting_weekly;
                 let monthly_prize = reward_coin_percent_1 * savingsd.weighting_monthly;
@@ -696,8 +702,8 @@ module savings_game::vault{
                 transfer::public_transfer(reward_coin,win_adder);
                 add_coin_to_bag(&mut savingsd.prize_pool_weekly,weekly_coin);
                 add_coin_to_bag(&mut savingsd.prize_pool_monthly,monthly_coin);
-                deposit_fee(a_f,fee_r_coin,ctx);
-                    //transfer::public_transfer(fee_r_coin,a_f.adder);
+                deposit_fee(b_f,fee_r_coin,ctx);
+                    //transfer::public_transfer(fee_r_coin,b_f.adder);
                 emit(Outcome<D>{
                     win:reward_coin_vol,
                     game_type:0,
@@ -741,7 +747,6 @@ module savings_game::vault{
         let bal_in = coin::into_balance(coin_in);
         // 使用 TypeName 作为 Key，保证每种代币唯一
         let key = key_of<CoinType>();
-
         // 逻辑与你提供的一模一样：有则累加(join)，无则添加(add)
         if (bag::contains(bag, key)) {
             let bal_ref = bag::borrow_mut<String, Balance<CoinType>>(bag, key);
@@ -768,7 +773,7 @@ module savings_game::vault{
         }
     }
 
-    entry fun lottery_weekly<T,D,A>(savingsd: &mut SavingsData<A>,r : &Random,clock: &Clock,ctx: &mut TxContext){ //抽奖
+    entry fun lottery_weekly<T,D,A>(minter:&mut Minter,hc:&mut Halving_cycle,b_f:&Burn_sgc_fee,savingsd: &mut SavingsData<A>,r : &Random,clock: &Clock,ctx: &mut TxContext){ //抽奖
         assert!(savingsd.version == VERSION, ERRVERSION);
         assert!(savingsd.lottery_draw_weekly, E_TIME_NOT);
         let time_ = clock.timestamp_ms() / TIMEDS;
@@ -808,6 +813,7 @@ module savings_game::vault{
 
         //最后
         savingsd.lottery_draw_weekly = false;
+        sgc::mint(minter,hc,b_f.start_draw_reward,ctx);
         emit(Outcome<A>{
             win:0,
             game_type:7,
@@ -815,7 +821,7 @@ module savings_game::vault{
             random:random_num
         });
     }
-    entry fun lottery_monthly<T,D,A>(savingsd: &mut SavingsData<A>,r : &Random,clock: &Clock,ctx: &mut TxContext){ //抽奖
+    entry fun lottery_monthly<T,D,A>(minter:&mut Minter,hc:&mut Halving_cycle,b_f:&Burn_sgc_fee,savingsd: &mut SavingsData<A>,r : &Random,clock: &Clock,ctx: &mut TxContext){ //抽奖
         assert!(savingsd.version == VERSION, ERRVERSION);
         assert!(savingsd.lottery_draw_monthly, E_TIME_NOT);
         let time_ = clock.timestamp_ms() / TIMEDS;
@@ -855,6 +861,7 @@ module savings_game::vault{
         //最后
         savingsd.lottery_draw_monthly = false;
         savingsd.start_time = clock.timestamp_ms();
+        sgc::mint(minter,hc,b_f.start_draw_reward,ctx);
         emit(Outcome<A>{
             win:0,
             game_type:30,
@@ -903,18 +910,18 @@ module savings_game::vault{
         *change_get_time = time_;
     }
 
-    entry fun burn_sgc_sui(minter: &mut Minter,a_f: &mut Burn_sgc_fee,cont: &mut Container,ctx: &mut TxContext){
-            assert!(a_f.version == VERSION, ERRVERSION);
-            let coin = withdraw_burning_sgc<SUI>(a_f,ctx);
+    entry fun burn_sgc_sui(minter: &mut Minter,b_f: &mut Burn_sgc_fee,cont: &mut Container,ctx: &mut TxContext){
+            assert!(b_f.version == VERSION, ERRVERSION);
+            let coin = withdraw_burning_sgc<SUI>(b_f,ctx);
             let coin_value = coin.value();
             assert!(coin_value > 0, E_ZERO_WEIGHT);
             let coin_sgc = mini_swap::swap<SUI,SGC>(cont,coin,ctx);
             sgc::burn(minter,coin_sgc);
     }
 
-    entry fun burn_sgc<T>(minter: &mut Minter,a_f: &mut Burn_sgc_fee,cont: &mut Container,ctx: &mut TxContext){
-            assert!(a_f.version == VERSION, ERRVERSION);
-            let coin = withdraw_burning_sgc<T>(a_f,ctx);
+    entry fun burn_sgc<T>(minter: &mut Minter,b_f: &mut Burn_sgc_fee,cont: &mut Container,ctx: &mut TxContext){
+            assert!(b_f.version == VERSION, ERRVERSION);
+            let coin = withdraw_burning_sgc<T>(b_f,ctx);
             let coin_value = coin.value();
             assert!(coin_value > 0, E_ZERO_WEIGHT);
             let coin_sui = mini_swap::swap<T,SUI>(cont,coin,ctx);
