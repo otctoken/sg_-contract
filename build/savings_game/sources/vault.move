@@ -476,7 +476,7 @@ module savings_game::vault{
         assert!(savingsd.version == VERSION, ERRVERSION);
         let coin_value = deposit_coin.value();
         assert!(coin_value >= COINDS, E_ZERO_WEIGHT);
-        get_sgc_coin(minter,hc,savingsd,g_s,false,clock,ctx);
+        get_sgc_coin(minter,hc,savingsd,g_s,false,clock,ctx); //必须放在savingsd.savings变化前
         savingsd.total_balance = savingsd.total_balance + coin_value;
         // 检查地址是否在Table中
         if (savingsd.savings.contains(ctx.sender())) { //取款后下一个用这个节点的需要删除33333333333333333333333333333
@@ -502,10 +502,10 @@ module savings_game::vault{
             if(vector::length(&savingsd.null_node) > 0){
                 use_null_nodes(savingsd,coin_value,clock,ctx.sender())
             }else{
-            // 新增节点..
-                table::add(&mut savingsd.savings, ctx.sender(), coin_value);  
+            // 新增节点.. 
                 add_new_node(savingsd,coin_value,clock,ctx.sender())
-            }
+            };
+            table::add(&mut savingsd.savings, ctx.sender(), coin_value); 
         };
         lending_core::incentive_v3::deposit_with_account_cap(clock, storage, pool_a, savingsd.index, deposit_coin, inc_v1, inc_v2, &savingsd.account_cap);
     }
@@ -527,7 +527,7 @@ module savings_game::vault{
         assert!(savingsd.version == VERSION, ERRVERSION);
         let balance_d = table::borrow(&mut savingsd.savings,ctx.sender());
         assert!(*balance_d > 0, E_ZERO_WEIGHT);
-        get_sgc_coin(minter,hc,savingsd,g_s,true,clock,ctx);
+        get_sgc_coin(minter,hc,savingsd,g_s,true,clock,ctx);//必须放在savingsd.savings变化前
         let coinv_ = *balance_d / COINDS;
         savingsd.total_balance = savingsd.total_balance - *balance_d;
         let withdrawn_balance = lending_core::incentive_v3::withdraw_with_account_cap_v2(clock, oracle, storage, pool_a,savingsd.index, *balance_d, inc_v1, inc_v2,
