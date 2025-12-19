@@ -304,11 +304,11 @@ module savings_game::vault{
         };
         loop {                                 // Move 同样支持 `loop`
             if (nn > tree_u / 2) {
-               return nn - 1;                 // 直接返回找到的父
+               return nn - 1                 // 直接返回找到的父
             };
             let right = tail_from_prev_single(tree_u, nn);
             if (right < leaf_node) {
-                return right - 1;              // 也是找到父
+                return right - 1              // 也是找到父
             };
             tree_u = tree_u / 2;           
         }
@@ -317,7 +317,7 @@ module savings_game::vault{
 
         /// 统一生成“键”：ascii::String（和 type_name 完全一致）
     fun key_of<A>(): String {
-        type_name::into_string(type_name::get_with_original_ids<A>())
+        type_name::into_string(type_name::with_original_ids<A>())
     }
     //金库存取
     /// 存入任意币种手续费：把 Coin<A> 合并进 Bag 里的 `Balance<A>`
@@ -424,8 +424,8 @@ module savings_game::vault{
     fun use_null_nodes<A>(savingsd: &mut SavingsData<A>,coin_v:u64,clock: &Clock,send:address){   //使用空节点
         let null_n = vector::pop_back(&mut savingsd.null_node);
         let adder_ = table::borrow_mut(&mut savingsd.node_adder, null_n);
-        let savings_ = table::remove(&mut savingsd.savings, *adder_);
-        let node_ = table::remove(&mut savingsd.adder_node, *adder_);
+        let _savings_ = table::remove(&mut savingsd.savings, *adder_);
+        let _node_ = table::remove(&mut savingsd.adder_node, *adder_);
         *adder_ = send;
         table::add(&mut savingsd.adder_node, send, null_n);
         let coinv_ = coin_v / COINDS;
@@ -754,7 +754,7 @@ module savings_game::vault{
         ctx: &mut TxContext
     ): Coin<CoinType> {
         // 1. 同样先生成 String Key
-        let key: String = type_name::into_string(type_name::get<CoinType>());
+        let key: String = type_name::into_string(type_name::with_original_ids<CoinType>());
         
         // 2. 用 String 去 Bag 里找
         if (bag::contains(bag, key)) {
@@ -870,7 +870,7 @@ module savings_game::vault{
             let get_time = time_ - *table::borrow(&g_s.change_time,ctx.sender());
             let sgc_amout = snd_savings * get_time / g_s.sgc_weight;
             sgc::mint(minter,hc, sgc_amout,ctx);
-            let node_ = table::remove(&mut g_s.change_time,ctx.sender());
+            let _node_ = table::remove(&mut g_s.change_time,ctx.sender());
         }else{
             if(savingsd.savings.contains(ctx.sender())){
                 let current_count = table::borrow(&savingsd.savings,ctx.sender()); //下一个 取款必须加入空列表
