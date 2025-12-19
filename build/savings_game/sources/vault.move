@@ -178,7 +178,7 @@ module savings_game::vault{
             weighting_weekly:30, 
             weighting_monthly:20, 
             round_weekly:7,
-            round_monthly:28,
+            round_monthly:14,
             lottery_draw_weekly:false,
             lottery_draw_monthly:false,
             number_of_draws:0,
@@ -217,7 +217,6 @@ module savings_game::vault{
         // 1. 获取原始奖励列表
         let all_rewards = incentive_v3::get_user_claimable_rewards(clock, storage, incentive, savingsd.account_cap.account_owner());
 
-        // 2. 使用模块提供的函数一次性解析所有数据
         // 这一步会把 ClaimableReward 结构体拆解成平行的 vectors
         let (
             mut asset_coin_types,   // vector<String>
@@ -227,12 +226,7 @@ module savings_game::vault{
             mut all_rule_ids        // vector<vector<address>>
         ) = incentive_v3::parse_claimable_rewards(all_rewards);
 
-        // 3. 准备结果容器 (注意要加 mut)
 
-        // 注意：原代码逻辑如果是一个用户对应多个规则，result_rule_ids 可能需要是 vector<vector<address>> 或者你只需要其中一个
-
-        // 4. 遍历解析后的数据
-        // 因为 vector::pop_back 是从后往前取，所以这些 vector 的长度是同步变化的
         // 1. 创建第一个 Table
         let mut result_strings = vector::empty<vector<String>>();
         let mut result_addresses = vector::empty<vector<address>>();
@@ -252,11 +246,6 @@ module savings_game::vault{
                 let mut asset_coin_type = vector::empty<String>();
                 vector::push_back(&mut asset_coin_type, asset_type);
                 
-                // 关于 rule_ids 的处理：
-                // 原报错代码是: result_rule_ids = reward.rule_ids;
-                // 这里的 rule_ids 是 vector<address> 类型。
-                // 如果你的 result_rule_ids 是用来存所有符合条件的规则ID，你需要决定是覆盖还是合并。
-                // 假设你是想拿到最后一条非零奖励的规则ID，或者你需要根据你的业务逻辑调整这里：
                 vector::push_back(&mut result_strings, asset_coin_type);
                 vector::push_back(&mut result_addresses, rule_ids);
             };
@@ -300,9 +289,7 @@ module savings_game::vault{
 
 
     public fun infer_prev_from_tail_single(total_len: u64, v: u64): u64 {
-        // total_len 必须偶数 & 2^k
-        // assert!(total_len % 2 == 0, E_TOTAL_LEN_MISMATCH);
-        // assert_power_of_two(total_len);
+
         let n = total_len / 2;
         assert!(v >= n + 1 && v <= total_len, E_TAIL_VAL_OOB);
         // 尾段索引（1..n）= v - n
@@ -412,8 +399,6 @@ module savings_game::vault{
  
 
     fun add_new_node<A>(savingsd: &mut SavingsData<A>,coin_v:u64,clock: &Clock,send:address){//增加空节点怎么弄？
-        //增加空节点怎么弄？
-        //if(savingsd.null_node.time<开始时间 && ...)
         table::add(&mut savingsd.adder_node, send, savingsd.leaf_node);
         table::add(&mut savingsd.node_adder, savingsd.leaf_node, send);
         let coinv_ = coin_v / COINDS;
