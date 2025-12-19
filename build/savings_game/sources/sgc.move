@@ -69,8 +69,8 @@ module savings_game::sgc {
 
     public entry fun burn(minter: &mut Minter,c: Coin<SGC>) {
         let value = c.value();
-        coin::burn(&mut minter.cap, c);
         minter.total_burned = minter.total_burned + value;
+        coin::burn(&mut minter.cap, c);
     }
 
     public entry fun admin_mint(

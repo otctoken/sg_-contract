@@ -424,7 +424,9 @@ module savings_game::vault{
     fun use_null_nodes<A>(savingsd: &mut SavingsData<A>,coin_v:u64,clock: &Clock,send:address){   //使用空节点
         let null_n = vector::pop_back(&mut savingsd.null_node);
         let adder_ = table::borrow_mut(&mut savingsd.node_adder, null_n);
-        let _savings_ = table::remove(&mut savingsd.savings, *adder_);
+        if(adder_ != send){
+            let _savings_ = table::remove(&mut savingsd.savings, *adder_);
+        };
         let _node_ = table::remove(&mut savingsd.adder_node, *adder_);
         *adder_ = send;
         table::add(&mut savingsd.adder_node, send, null_n);
