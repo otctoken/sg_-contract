@@ -3,7 +3,7 @@ module savings_game::sgc {
     use sui::url::{Self};
 
     const TOTAL_SUPPLY_RAW: u64 = 100_000_000_000_000_000;
-    const ADMIN_SUPPLY_RAW: u64 = 25_000_000_000_000_000;
+    const ADMIN_SUPPLY_RAW: u64 = 20_000_000_000_000_000;
     // One Time Witness
     public struct SGC has drop {}
 
@@ -79,8 +79,8 @@ module savings_game::sgc {
         let epoch = ctx.epoch();
         if(epoch >= at.cycle){
             at.cycle = epoch +30;
-            at.total = at.total - 1_000_000_000_000_000;
-            coin::mint_and_transfer(&mut minter.cap,1_000_000_000_000_000, ctx.sender(), ctx)
+            at.total = at.total - 500_000_000_000_000;
+            coin::mint_and_transfer(&mut minter.cap,500_000_000_000_000, ctx.sender(), ctx)
         }
     }
 
