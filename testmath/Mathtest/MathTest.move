@@ -53,19 +53,20 @@ fun init(
         // 尾段索引（1..n）= v - n
         seq_value(n, v - n)
     }
-    public entry fun lottery_num(fo:&mut Foo,rnum:u64,liebiao1:vector<u64>,tree_h:u64,quantity:u64){// 9[] //看图，初始 为内部节点边界quantity=9  树高 tree_h=4
+    // 1.fo:结果  2.rnm :随机数，最大小于内部节点  3.liebiao1内部节点权重合计  4. tree_h 树高    5 internal_node
+    public entry fun lottery_num(fo:&mut Foo,rnum:u64,liebiao1:vector<u64>,tree_h:u64,internal_node:u64){// 9[] //看图，初始 为内部节点边界quantity=9  树高 tree_h=4
         let mut i_n = 2;
         let mut rn = rnum;
         let mut i_n_lottery = 1;
-        while(i_n < quantity){
+        while(i_n < internal_node){
             i_n_lottery = i_n;
             let inum = *vector::borrow(&liebiao1, i_n);
             if(rn > inum){
                 rn = rn - inum;
                 i_n = (i_n + 1) * 2;
-                if(i_n >= 9){
+                if(i_n >= internal_node){
                     i_n_lottery = i_n / 2;
-                    if(i_n_lottery >= quantity){
+                    if(i_n_lottery >= internal_node){
                         let node_num = (i_n_lottery - 1) / 2 + 1;
                         fo.num = node_num;
                     }
@@ -74,7 +75,7 @@ fun init(
                 i_n = i_n * 2;
             }
         };
-        if (i_n_lottery < quantity){
+        if (i_n_lottery < internal_node){
             let l_n_lottery_r = i_n_lottery + 1;
             let mut tree_u:u64 = 1 << (tree_h as u8);
             if(l_n_lottery_r <= tree_u / 2){
