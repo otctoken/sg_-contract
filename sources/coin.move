@@ -1,6 +1,7 @@
 module savings_game::sgc {
     use sui::coin::{Self, Coin, TreasuryCap};
     use sui::url::{Self};
+    use sui::clock::{Clock};
 
     const TOTAL_SUPPLY_RAW: u64 = 100_000_000_000_000_000;
     const ADMIN_SUPPLY_RAW: u64 = 20_000_000_000_000_000;
@@ -74,11 +75,11 @@ module savings_game::sgc {
     }
 
     public entry fun admin_mint(
-        minter: &mut Minter, at:&mut AdminTotal,ctx: &mut TxContext
+        minter: &mut Minter, at:&mut AdminTotal,clk:&Clock,ctx: &mut TxContext
     ) {
-        let epoch = ctx.epoch();
-        if(epoch >= at.cycle){
-            at.cycle = epoch +30;
+        let time = clk.timestamp_ms();
+        if(time >= at.cycle){
+            at.cycle = time + 2_592_000_000;
             at.total = at.total - 500_000_000_000_000;
             coin::mint_and_transfer(&mut minter.cap,500_000_000_000_000, ctx.sender(), ctx)
         }
