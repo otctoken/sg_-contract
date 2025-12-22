@@ -47,7 +47,7 @@ module savings_game::vault{
     const WEEKERR:u64 = 12;
     const MOONERR:u64 = 13;
     //合约升级必修改
-    const VERSION: u64 = 1;
+    const VERSION: u64 = 2;
 
 
     public struct Node_Data has store , drop {
@@ -434,7 +434,12 @@ module savings_game::vault{
         };
         let _node_ = table::remove(&mut savingsd.adder_node, *adder_);
         *adder_ = send;
-        table::add(&mut savingsd.adder_node, send, null_n);
+        if (table::contains(&savingsd.adder_node, send)){
+            let send_node = table::borrow_mut(&mut savingsd.adder_node, send);
+            *send_node = null_n;
+        }else{
+            table::add(&mut savingsd.adder_node, send, null_n);
+        };
         let coinv_ = coin_v / COINDS;
         let time_ = clock.timestamp_ms() / TIMEDS;
         let node_d_  = table::borrow_mut(&mut savingsd.leaf_node_data, null_n);
