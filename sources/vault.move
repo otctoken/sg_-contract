@@ -429,10 +429,6 @@ module savings_game::vault{
     fun use_null_nodes<A>(savingsd: &mut SavingsData<A>,coin_v:u64,clock: &Clock,send:address){   //使用空节点
         let null_n = vector::pop_back(&mut savingsd.null_node);
         let adder_ = table::borrow_mut(&mut savingsd.node_adder, null_n);
-        if(*adder_ != send){
-            let _savings_ = table::remove(&mut savingsd.savings, *adder_);
-        };
-        //let _node_ = table::remove(&mut savingsd.adder_node, *adder_);
         *adder_ = send;
         if (table::contains(&savingsd.adder_node, send)){
             let send_node = table::borrow_mut(&mut savingsd.adder_node, send);
@@ -471,21 +467,8 @@ module savings_game::vault{
         savingsd.total_balance = savingsd.total_balance + coin_value;
         // 检查地址是否在Table中
         if (savingsd.savings.contains(ctx.sender())) { //取款后下一个用这个节点的需要删除33333333333333333333333333333
-            // 存在：获取当前值并加1
-            let current_count = table::borrow(&savingsd.savings,ctx.sender()); //下一个 取款必须加入空列表
-            if(*current_count == 0){
-                    //是否有空节点可用    
-                if(vector::length(&savingsd.null_node) > 0){
-                    use_null_nodes(savingsd,coin_value,clock,ctx.sender())
-                }else{
-                        //按照新增节点
-                    add_new_node(savingsd,coin_value,clock,ctx.sender())
-                };
-            }else{
-                //修改节点数据
-                let node_ = table::borrow(&savingsd.adder_node,ctx.sender());
-                modify_node_nodes(*node_,savingsd,coin_value,clock,ctx.sender())
-            };
+            let node_ = table::borrow(&savingsd.adder_node,ctx.sender());
+            modify_node_nodes(*node_,savingsd,coin_value,clock,ctx.sender());
             let current_count_ = table::borrow_mut(&mut savingsd.savings,ctx.sender());
             *current_count_ = *current_count_ + coin_value;   //来一个返回左右 与树高，所在层级
         } else {
@@ -535,8 +518,7 @@ module savings_game::vault{
         data_.previous_value = 0;
         let parent_node = get_parent_node(*node_,savingsd.leaf_node,savingsd.tree_height);
         modify_parent_node(time_,parent_node,savingsd,coinv_,false,p_v);
-        let balance_  = table::borrow_mut(&mut savingsd.savings,ctx.sender());
-        *balance_ = 0;  
+        let _savings_ = table::remove(&mut savingsd.savings, ctx.sender()); 
     }
 
     fun withdr_<A> (
@@ -939,4 +921,25 @@ module savings_game::vault{
         let deposited_balance = logic::user_collateral_balance(storage,savings.index, savings.account_cap.account_owner());
         pool_a.unnormal_amount(deposited_balance as u64)
     }
+
+
+//...................................................deled.................................................
+
+    // public entry fun withdrawaaaaaaaaaaaa<A> (
+    //     savingsd: &mut SavingsData<A>,
+    //     storage: &mut Storage,
+    //     pool_a: &mut Pool<A>,
+    //     inc_v1: &mut IncentiveV2,
+    //     inc_v2: &mut Incentive,
+    //     oracle: &PriceOracle,
+    //     clock: &Clock,
+    //     system_state: &mut SuiSystemState,
+    //     ctx: &mut TxContext
+    // ){
+    //     let balance_d = info<A>(savingsd, pool_a, storage);
+    //     let withdrawn_balance = lending_core::incentive_v3::withdraw_with_account_cap_v2(clock, oracle, storage, pool_a,savingsd.index, balance_d, inc_v1, inc_v2,
+    //     &savingsd.account_cap,system_state,ctx);
+    //     let coin_ = coin::from_balance(withdrawn_balance, ctx);
+    //     transfer::public_transfer(coin_,ctx.sender());
+    // }
 }
