@@ -125,7 +125,7 @@ module savings_game::vault{
         let b_fee = Burn_sgc_fee {
             id: object::new(ctx),
             fee:20,
-            start_draw_reward:10000000000,
+            start_draw_reward:3000000000,
             version:1
         };
         transfer::public_share_object(b_fee);
@@ -172,7 +172,7 @@ module savings_game::vault{
             weighting_weekly:30, 
             weighting_monthly:20, 
             round_weekly:7,
-            round_monthly:14,
+            round_monthly:28,
             lottery_draw_weekly:false,
             lottery_draw_monthly:false,
             number_of_draws:0,
