@@ -21,7 +21,6 @@ module savings_game::sgc {
         cycle:u64
     }
 
-        /// 将 TreasuryCap<SGC> 私有封装在模块内，外部拿不到该字段
     public struct Minter has key, store {
         id: UID,
         cap: TreasuryCap<SGC>,
@@ -50,7 +49,6 @@ module savings_game::sgc {
         };
         transfer::public_freeze_object(metadata);
         // transfer::public_share_object(metadata);
-                // 封装 TreasuryCap 到 Minter并共享 Minter
         let minter = Minter { id: object::new(ctx), cap: treasury,total_burned:0 };
         transfer::share_object(minter);
         transfer::public_share_object(hc);
