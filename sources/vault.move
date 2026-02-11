@@ -47,7 +47,7 @@ module savings_game::vault{
     const WEEKERR:u64 = 12;
     const MOONERR:u64 = 13;
 
-    const VERSION: u64 = 1;
+    const VERSION: u64 = 2;
 
 
     public struct Node_Data has store , drop {
