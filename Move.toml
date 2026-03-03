@@ -1,0 +1,11 @@
+[package]
+name = "savings_game"
+edition = "2024.beta"
+
+
+[dependencies]
+lending_core = { git = "https://github.com/naviprotocol/navi-smart-contracts.git", subdir = "lending_core", rev = "main" }
+oracle = { git = "https://github.com/naviprotocol/navi-smart-contracts.git", subdir = "oracle", rev = "main" }
+sui_system = { system = "sui_system" }
+flowxswap = { git = "https://github.com/otctoken/amm-interface-flowx.git", rev = "master"}
+
